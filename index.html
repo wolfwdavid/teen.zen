@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="styles.css">
-  <title>Flashcard Game with AI Help</title>
+  <title>Flashcard Game & Therapy Chatbot</title>
 </head>
 <body>
   <div id="flashcard-container">
@@ -18,9 +18,15 @@
       <button id="check-answer">Check Answer</button>
     </div>
     <button id="next-button">Next Card :D</button>
-    <div id="chatbot-container">
-      <button id="ask-ai">Ask AI for Help</button>
-      <div id="ai-response"></div>
+  </div>
+
+  <!-- Therapy Chatbot Section -->
+  <div id="chatbot-container">
+    <h2>Therapy Chatbot 💬</h2>
+    <div id="chat-window">
+      <div id="chat-log"></div>
+      <input type="text" id="chat-input" placeholder="Talk to me...">
+      <button id="send-message">Send</button>
     </div>
   </div>
 
@@ -29,24 +35,35 @@
         const response = await fetch("https://api.openai.com/v1/chat/completions", {
             method: "POST",
             headers: {
-                "Authorization": "Bearer YOUR_OPENAI_API_KEY", // Replace with your API Key
+                "Authorization": "Bearer YOUR_OPENAI_API_KEY", // Replace with your OpenAI API key
                 "Content-Type": "application/json"
             },
             body: JSON.stringify({
                 model: "gpt-4",
-                messages: [{ role: "user", content: message }]
+                messages: [
+                    { role: "system", content: "You are a kind and empathetic therapy chatbot. Listen to the user and respond supportively." },
+                    { role: "user", content: message }
+                ]
             })
         });
+
         const data = await response.json();
         return data.choices[0].message.content;
     }
 
-    document.getElementById("ask-ai").addEventListener("click", async () => {
-        const question = document.getElementById("question").innerText;
-        const responseDiv = document.getElementById("ai-response");
-        responseDiv.innerText = "Thinking...";
-        const aiResponse = await chatWithGPT(`Give me a hint for this question: ${question}`);
-        responseDiv.innerText = aiResponse;
+    document.getElementById("send-message").addEventListener("click", async () => {
+        const userMessage = document.getElementById("chat-input").value;
+        if (!userMessage.trim()) return;
+
+        const chatLog = document.getElementById("chat-log");
+        chatLog.innerHTML += `<p><strong>You:</strong> ${userMessage}</p>`;
+
+        document.getElementById("chat-input").value = "Typing...";
+        const aiResponse = await chatWithGPT(userMessage);
+        document.getElementById("chat-input").value = "";
+
+        chatLog.innerHTML += `<p><strong>Therapist Bot:</strong> ${aiResponse}</p>`;
+        chatLog.scrollTop = chatLog.scrollHeight;
     });
   </script>
 

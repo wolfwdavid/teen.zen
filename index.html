@@ -4,20 +4,52 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="styles.css">
-  <title>Flashcard Game</title>
+  <title>Flashcard Game with AI Help</title>
 </head>
 <body>
   <div id="flashcard-container">
     <div id="flashcard">
-      <img src="img/chibi-wolf.gif" alt=" Japanese Small Anime Wolf" id="chibi-wolf">
+      <img src="img/chibi-wolf.gif" alt="Japanese Small Anime Wolf" id="chibi-wolf">
       <div id="question"></div>
       <div>
         <label for="answer">Your Answer: </label>
-        <input type="text" id="answer" >
+        <input type="text" id="answer">
       </div>
+      <button id="check-answer">Check Answer</button>
     </div>
-    <button id="next-button">Next Card :D </button>
+    <button id="next-button">Next Card :D</button>
+    <div id="chatbot-container">
+      <button id="ask-ai">Ask AI for Help</button>
+      <div id="ai-response"></div>
+    </div>
   </div>
+
+  <script>
+    async function chatWithGPT(message) {
+        const response = await fetch("https://api.openai.com/v1/chat/completions", {
+            method: "POST",
+            headers: {
+                "Authorization": "Bearer YOUR_OPENAI_API_KEY", // Replace with your API Key
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                model: "gpt-4",
+                messages: [{ role: "user", content: message }]
+            })
+        });
+        const data = await response.json();
+        return data.choices[0].message.content;
+    }
+
+    document.getElementById("ask-ai").addEventListener("click", async () => {
+        const question = document.getElementById("question").innerText;
+        const responseDiv = document.getElementById("ai-response");
+        responseDiv.innerText = "Thinking...";
+        const aiResponse = await chatWithGPT(`Give me a hint for this question: ${question}`);
+        responseDiv.innerText = aiResponse;
+    });
+  </script>
+
   <script src="flashcards.js"></script>
 </body>
 </html>

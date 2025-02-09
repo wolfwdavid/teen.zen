@@ -5,6 +5,46 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <link rel="stylesheet" href="styles.css">
   <title>Flashcard Game & Therapy Chatbot</title>
+  <style>
+    #chatbot-container {
+      width: 300px;
+      margin: 20px auto;
+      padding: 15px;
+      border: 2px solid #ccc;
+      border-radius: 10px;
+      background: #f9f9f9;
+      text-align: center;
+    }
+    #chat-window {
+      max-height: 200px;
+      overflow-y: auto;
+      padding: 10px;
+      background: white;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      margin-bottom: 10px;
+      text-align: left;
+    }
+    #chat-log p {
+      margin: 5px 0;
+      padding: 5px;
+      border-radius: 5px;
+    }
+    .user-message {
+      background: #d1e7dd;
+    }
+    .bot-message {
+      background: #f8d7da;
+    }
+    #chat-input {
+      width: 80%;
+      padding: 5px;
+    }
+    #send-message {
+      padding: 5px 10px;
+      cursor: pointer;
+    }
+  </style>
 </head>
 <body>
   <div id="flashcard-container">
@@ -25,45 +65,56 @@
     <h2>Therapy Chatbot 💬</h2>
     <div id="chat-window">
       <div id="chat-log"></div>
-      <input type="text" id="chat-input" placeholder="Talk to me...">
-      <button id="send-message">Send</button>
     </div>
+    <input type="text" id="chat-input" placeholder="Talk to me...">
+    <button id="send-message">Send</button>
   </div>
 
   <script>
-    async function chatWithGPT(message) {
-        const response = await fetch("https://api.openai.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
-                "Authorization": "Bearer YOUR_OPENAI_API_KEY", // Replace with your OpenAI API key
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify({
-                model: "gpt-4",
-                messages: [
-                    { role: "system", content: "You are a kind and empathetic therapy chatbot. Listen to the user and respond supportively." },
-                    { role: "user", content: message }
-                ]
-            })
-        });
+    async function chatWithGPT(userMessage) {
+        try {
+            const response = await fetch("https://api.openai.com/v1/chat/completions", {
+                method: "POST",
+                headers: {
+                    "Authorization": "Bearer YOUR_OPENAI_API_KEY", // Replace with your OpenAI API Key
+                    "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                    model: "gpt-4",
+                    messages: [
+                        { role: "system", content: "You are a kind and empathetic therapist chatbot. Respond in a supportive and warm manner." },
+                        { role: "user", content: userMessage }
+                    ]
+                })
+            });
 
-        const data = await response.json();
-        return data.choices[0].message.content;
+            if (!response.ok) {
+                throw new Error(`API Error: ${response.status}`);
+            }
+
+            const data = await response.json();
+            return data.choices[0].message.content;
+        } catch (error) {
+            console.error("Error:", error);
+            return "I'm having trouble responding right now. Please try again later.";
+        }
     }
 
     document.getElementById("send-message").addEventListener("click", async () => {
-        const userMessage = document.getElementById("chat-input").value;
-        if (!userMessage.trim()) return;
+        const userMessage = document.getElementById("chat-input").value.trim();
+        if (!userMessage) return;
 
         const chatLog = document.getElementById("chat-log");
-        chatLog.innerHTML += `<p><strong>You:</strong> ${userMessage}</p>`;
+        chatLog.innerHTML += `<p class="user-message"><strong>You:</strong> ${userMessage}</p>`;
 
         document.getElementById("chat-input").value = "Typing...";
+        
         const aiResponse = await chatWithGPT(userMessage);
+        
         document.getElementById("chat-input").value = "";
 
-        chatLog.innerHTML += `<p><strong>Therapist Bot:</strong> ${aiResponse}</p>`;
-        chatLog.scrollTop = chatLog.scrollHeight;
+        chatLog.innerHTML += `<p class="bot-message"><strong>Therapist Bot:</strong> ${aiResponse}</p>`;
+        chatLog.scrollTop = chatLog.scrollHeight; // Auto-scroll to latest message
     });
   </script>
 

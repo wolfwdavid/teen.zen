@@ -87,7 +87,8 @@
   <nav>
     <a href="#">Home</a>
     <a href="#">About Us</a>
-    <a href="#">Create an Account</a>
+    <a href="register.html" id="register">Create an Account</a>
+
   </nav>
 
   <div id="main-container">
@@ -116,31 +117,35 @@
   </div>
 
   <script>
-    function makeDraggable(elementId) {
-      const element = document.getElementById(elementId);
-      let isDragging = false, offsetX, offsetY;
+    let messageCount = 0;
+    let isRegistered = false;
+    const chatLog = document.getElementById("chat-log");
+    const chatInput = document.getElementById("chat-input");
+    const sendButton = document.getElementById("send-message");
+    const registerButton = document.getElementById("register");
+    
+    sendButton.addEventListener("click", function() {
+      if (!isRegistered && messageCount >= 5) {
+        alert("You must register an account before continuing. Your chat history has been saved.");
+        return;
+      }
       
-      element.addEventListener("touchstart", (e) => {
-        isDragging = true;
-        const touch = e.touches[0];
-        offsetX = touch.clientX - element.getBoundingClientRect().left;
-        offsetY = touch.clientY - element.getBoundingClientRect().top;
-      });
+      const userMessage = chatInput.value;
+      if (!userMessage) return;
       
-      document.addEventListener("touchmove", (e) => {
-        if (!isDragging) return;
-        const touch = e.touches[0];
-        element.style.left = `${touch.clientX - offsetX}px`;
-        element.style.top = `${touch.clientY - offsetY}px`;
-      });
+      chatLog.innerHTML += `<p class='user-message'><strong>You:</strong> ${userMessage}</p>`;
+      chatInput.value = "";
+      messageCount++;
       
-      document.addEventListener("touchend", () => {
-        isDragging = false;
-      });
-    }
+      if (messageCount === 5 && !isRegistered) {
+        alert("You need to register an account to continue chatting. Your chat logs have been saved.");
+      }
+    });
 
-    makeDraggable("chatbot-container");
-    makeDraggable("chibi-wolf");
+    registerButton.addEventListener("click", function() {
+      isRegistered = true;
+      alert("Thank you for registering! Your chat history has been saved, and you may continue chatting.");
+    });
   </script>
 
   <script src="flashcards.js"></script>

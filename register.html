@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css">
+  <title>Create an Account</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      height: 100vh;
+      margin: 0;
+      background: linear-gradient(to right, #d4fc79, #96e6a1);
+    }
+    .register-container {
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(10px);
+      padding: 30px;
+      border-radius: 15px;
+      box-shadow: 0px 0px 15px rgba(0, 0, 0, 0.2);
+      width: 350px;
+      text-align: center;
+    }
+    h2 {
+      color: #333;
+    }
+    input {
+      width: 100%;
+      padding: 10px;
+      margin: 10px 0;
+      border: 1px solid #ccc;
+      border-radius: 5px;
+      background: rgba(255, 255, 255, 0.5);
+    }
+    .password-container {
+      position: relative;
+    }
+    .toggle-password {
+      position: absolute;
+      right: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      cursor: pointer;
+    }
+    button {
+      width: 100%;
+      padding: 10px;
+      background-color: #28a745;
+      color: white;
+      border: none;
+      border-radius: 5px;
+      cursor: pointer;
+      font-size: 16px;
+      font-weight: bold;
+    }
+    button:hover {
+      background-color: #218838;
+    }
+    .login-link {
+      margin-top: 15px;
+      font-size: 14px;
+    }
+    .login-link a {
+      text-decoration: none;
+      color: #007bff;
+      font-weight: bold;
+    }
+    .google-login {
+      margin-top: 15px;
+      display: flex;
+      justify-content: center;
+    }
+    .google-login button {
+      background-color: #db4437;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      padding: 10px;
+    }
+    .google-login img {
+      width: 20px;
+      margin-right: 10px;
+    }
+  </style>
+</head>
+<body>
+  <div class="register-container">
+    <h2>Create a New Account</h2>
+    <p>Join our platform today</p>
+    <form id="register-form">
+      <input type="text" id="name" placeholder="Full Name" required>
+      <input type="email" id="email" placeholder="Email Address" required>
+      <div class="password-container">
+        <input type="password" id="password" placeholder="Password" required>
+        <span class="toggle-password" onclick="togglePassword('password')">👁️</span>
+      </div>
+      <div class="password-container">
+        <input type="password" id="confirm-password" placeholder="Confirm Password" required>
+        <span class="toggle-password" onclick="togglePassword('confirm-password')">👁️</span>
+      </div>
+      <button type="submit">Sign Up</button>
+    </form>
+    <div class="google-login">
+      <button id="google-signin"><img src="google-logo.png" alt="Google"> Sign in with Google</button>
+    </div>
+    <p class="login-link">Already have an account? <a href="login.html">Log in</a></p>
+  </div>
+
+  <script>
+    function togglePassword(fieldId) {
+      let field = document.getElementById(fieldId);
+      field.type = field.type === "password" ? "text" : "password";
+    }
+
+    document.getElementById("register-form").addEventListener("submit", function(event) {
+      event.preventDefault();
+      localStorage.setItem("isRegistered", "true");
+      localStorage.setItem("userName", document.getElementById("name").value);
+      alert("Registration successful! Redirecting to the main page.");
+      window.location.href = "index.html";
+    });
+
+    document.getElementById("google-signin").addEventListener("click", function() {
+      alert("Google Sign-In feature coming soon!");
+    });
+  </script>
+</body>
+</html>

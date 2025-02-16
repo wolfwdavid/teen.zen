@@ -10,6 +10,9 @@
       font-family: Arial, sans-serif;
       margin: 0;
       padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
     nav {
       background-color: #333;
@@ -32,9 +35,36 @@
     nav a:hover {
       text-decoration: underline;
     }
+    #main-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+      margin-top: 80px;
+    }
+    @media (min-width: 768px) {
+      #main-container {
+        flex-direction: row;
+        justify-content: space-around;
+        width: 80%;
+      }
+    }
+    #flashcard-container, #chatbot-container {
+      flex: 1;
+      max-width: 100%;
+      margin-bottom: 20px;
+    }
+    @media (min-width: 768px) {
+      #flashcard-container, #chatbot-container {
+        max-width: 45%;
+      }
+    }
+    #chatbot-container, #chibi-wolf {
+      position: relative;
+      cursor: grab;
+      touch-action: none;
+    }
     #chatbot-container {
-      width: 300px;
-      margin: 80px auto 20px;
       padding: 15px;
       border: 2px solid #ccc;
       border-radius: 10px;
@@ -51,28 +81,6 @@
       margin-bottom: 10px;
       text-align: left;
     }
-    #chat-log p {
-      margin: 5px 0;
-      padding: 5px;
-      border-radius: 5px;
-    }
-    .user-message {
-      background: #d1e7dd;
-    }
-    .bot-message {
-      background: #f8d7da;
-    }
-    #chat-input {
-      width: 80%;
-      padding: 5px;
-    }
-    #send-message {
-      padding: 5px 10px;
-      cursor: pointer;
-    }
-    #flashcard-container {
-      margin-top: 60px;
-    }
   </style>
 </head>
 <body>
@@ -82,28 +90,58 @@
     <a href="#">Create an Account</a>
   </nav>
 
-  <div id="flashcard-container">
-    <div id="flashcard">
-      <img src="img/chibi-wolf.gif" alt="Japanese Small Anime Wolf" id="chibi-wolf">
-      <div id="question"></div>
-      <div>
-        <label for="answer">Your Answer: </label>
-        <input type="text" id="answer">
+  <div id="main-container">
+    <div id="flashcard-container">
+      <div id="flashcard">
+        <img src="img/chibi-wolf.gif" alt="Japanese Small Anime Wolf" id="chibi-wolf">
+        <div id="question"></div>
+        <div>
+          <label for="answer">Your Answer: </label>
+          <input type="text" id="answer">
+        </div>
+        <button id="check-answer">Check Answer</button>
       </div>
-      <button id="check-answer">Check Answer</button>
+      <button id="next-button">Next Card :D</button>
     </div>
-    <button id="next-button">Next Card :D</button>
+
+    <!-- Therapy Chatbot Section -->
+    <div id="chatbot-container">
+      <h2>Therapy Chatbot 💬</h2>
+      <div id="chat-window">
+        <div id="chat-log"></div>
+      </div>
+      <input type="text" id="chat-input" placeholder="Talk to me...">
+      <button id="send-message">Send</button>
+    </div>
   </div>
 
-  <!-- Therapy Chatbot Section -->
-  <div id="chatbot-container">
-    <h2>Chatbot 💬</h2>
-    <div id="chat-window">
-      <div id="chat-log"></div>
-    </div>
-    <input type="text" id="chat-input" placeholder="Talk to me...">
-    <button id="send-message">Send</button>
-  </div>
+  <script>
+    function makeDraggable(elementId) {
+      const element = document.getElementById(elementId);
+      let isDragging = false, offsetX, offsetY;
+      
+      element.addEventListener("touchstart", (e) => {
+        isDragging = true;
+        const touch = e.touches[0];
+        offsetX = touch.clientX - element.getBoundingClientRect().left;
+        offsetY = touch.clientY - element.getBoundingClientRect().top;
+      });
+      
+      document.addEventListener("touchmove", (e) => {
+        if (!isDragging) return;
+        const touch = e.touches[0];
+        element.style.left = `${touch.clientX - offsetX}px`;
+        element.style.top = `${touch.clientY - offsetY}px`;
+      });
+      
+      document.addEventListener("touchend", () => {
+        isDragging = false;
+      });
+    }
+
+    makeDraggable("chatbot-container");
+    makeDraggable("chibi-wolf");
+  </script>
 
   <script src="flashcards.js"></script>
 </body>

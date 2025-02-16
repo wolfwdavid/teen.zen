@@ -6,9 +6,35 @@
   <link rel="stylesheet" href="styles.css">
   <title>Flashcard Game & Therapy Chatbot</title>
   <style>
+    body {
+      font-family: Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+    }
+    nav {
+      background-color: #333;
+      padding: 10px 0;
+      text-align: center;
+      width: 100%;
+      position: fixed;
+      top: 0;
+      left: 0;
+      display: flex;
+      justify-content: center;
+      gap: 20px;
+    }
+    nav a {
+      color: white;
+      text-decoration: none;
+      font-size: 18px;
+      font-weight: bold;
+    }
+    nav a:hover {
+      text-decoration: underline;
+    }
     #chatbot-container {
       width: 300px;
-      margin: 20px auto;
+      margin: 80px auto 20px;
       padding: 15px;
       border: 2px solid #ccc;
       border-radius: 10px;
@@ -44,9 +70,18 @@
       padding: 5px 10px;
       cursor: pointer;
     }
+    #flashcard-container {
+      margin-top: 60px;
+    }
   </style>
 </head>
 <body>
+  <nav>
+    <a href="#">Home</a>
+    <a href="#">About Us</a>
+    <a href="#">Create an Account</a>
+  </nav>
+
   <div id="flashcard-container">
     <div id="flashcard">
       <img src="img/chibi-wolf.gif" alt="Japanese Small Anime Wolf" id="chibi-wolf">
@@ -62,71 +97,13 @@
 
   <!-- Therapy Chatbot Section -->
   <div id="chatbot-container">
-    <h2>Therapy Chatbot 💬</h2>
+    <h2>Chatbot 💬</h2>
     <div id="chat-window">
       <div id="chat-log"></div>
     </div>
     <input type="text" id="chat-input" placeholder="Talk to me...">
     <button id="send-message">Send</button>
   </div>
-
-  <script>
-    // Store conversation memory
-    let conversationHistory = [
-        { role: "system", content: "You are a kind and empathetic therapist chatbot. You listen attentively and provide warm, supportive responses." }
-    ];
-
-    async function chatWithGPT(userMessage) {
-        try {
-            // Add user message to memory
-            conversationHistory.push({ role: "user", content: userMessage });
-
-            const response = await fetch("https://api.openai.com/v1/chat/completions", {
-                method: "POST",
-                headers: {
-                    "Authorization": "Bearer YOUR_OPENAI_API_KEY", // Replace with your OpenAI API Key
-                    "Content-Type": "application/json"
-                },
-                body: JSON.stringify({
-                    model: "gpt-4",
-                    messages: conversationHistory // Send full chat history
-                })
-            });
-
-            if (!response.ok) {
-                throw new Error(`API Error: ${response.status}`);
-            }
-
-            const data = await response.json();
-            const aiResponse = data.choices[0].message.content;
-
-            // Store AI response in memory
-            conversationHistory.push({ role: "assistant", content: aiResponse });
-
-            return aiResponse;
-        } catch (error) {
-            console.error("Error:", error);
-            return "I'm having trouble responding right now. Please try again later.";
-        }
-    }
-
-    document.getElementById("send-message").addEventListener("click", async () => {
-        const userMessage = document.getElementById("chat-input").value.trim();
-        if (!userMessage) return;
-
-        const chatLog = document.getElementById("chat-log");
-        chatLog.innerHTML += `<p class="user-message"><strong>You:</strong> ${userMessage}</p>`;
-
-        document.getElementById("chat-input").value = "Typing...";
-        
-        const aiResponse = await chatWithGPT(userMessage);
-        
-        document.getElementById("chat-input").value = "";
-
-        chatLog.innerHTML += `<p class="bot-message"><strong>Therapist Bot:</strong> ${aiResponse}</p>`;
-        chatLog.scrollTop = chatLog.scrollHeight; // Auto-scroll to latest message
-    });
-  </script>
 
   <script src="flashcards.js"></script>
 </body>

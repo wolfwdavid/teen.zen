@@ -1,11 +1,12 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="stylesheet" href="styles.css">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <link rel="stylesheet" href="styles.css" />
   <title>Flashcard Game & Therapy Chatbot</title>
   <style>
+    /* Page styling (from existing code) */
     body {
       font-family: Arial, sans-serif;
       margin: 0;
@@ -40,7 +41,7 @@
       flex-direction: column;
       align-items: center;
       width: 100%;
-      margin-top: 80px;
+      margin-top: 80px;  /* space for fixed nav */
     }
     @media (min-width: 768px) {
       #main-container {
@@ -49,21 +50,26 @@
         width: 80%;
       }
     }
-    #flashcard-container, #chatbot-container {
+    /* Containers for flashcards and chatbot side by side */
+    #flashcard-container, 
+    #chatbot-container {
       flex: 1;
       max-width: 100%;
       margin-bottom: 20px;
     }
     @media (min-width: 768px) {
-      #flashcard-container, #chatbot-container {
+      #flashcard-container, 
+      #chatbot-container {
         max-width: 45%;
       }
     }
+    /* Dragging cursor for certain elements (if any) */
     #chatbot-container, #chibi-wolf {
       position: relative;
       cursor: grab;
       touch-action: none;
     }
+    /* Chatbot panel styling */
     #chatbot-container {
       padding: 15px;
       border: 2px solid #ccc;
@@ -75,12 +81,13 @@
       max-height: 200px;
       overflow-y: auto;
       padding: 10px;
-      background: white;
+      background: #ffffff;
       border: 1px solid #ddd;
       border-radius: 5px;
       margin-bottom: 10px;
       text-align: left;
     }
+    /* You can add more styles for .user-message and .bot-message classes if needed */
   </style>
 </head>
 <body>
@@ -88,17 +95,17 @@
     <a href="#">Home</a>
     <a href="#">About Us</a>
     <a href="register.html" id="register">Create an Account</a>
-
   </nav>
 
   <div id="main-container">
+    <!-- Flashcard Game Section -->
     <div id="flashcard-container">
       <div id="flashcard">
-        <img src="img/chibi-wolf.gif" alt="Japanese Small Anime Wolf" id="chibi-wolf">
+        <img src="img/chibi-wolf.gif" alt="Japanese Small Anime Wolf" id="chibi-wolf" />
         <div id="question"></div>
         <div>
           <label for="answer">Your Answer: </label>
-          <input type="text" id="answer">
+          <input type="text" id="answer" />
         </div>
         <button id="check-answer">Check Answer</button>
       </div>
@@ -109,45 +116,87 @@
     <div id="chatbot-container">
       <h2>Therapy Chatbot 💬</h2>
       <div id="chat-window">
+        <!-- Chat log will contain conversation messages -->
         <div id="chat-log"></div>
       </div>
-      <input type="text" id="chat-input" placeholder="Talk to me...">
+      <input type="text" id="chat-input" placeholder="Talk to me..." />
       <button id="send-message">Send</button>
     </div>
   </div>
 
+  <!-- Script for Chatbot and Flashcards -->
   <script>
+    // Track chat state
     let messageCount = 0;
     let isRegistered = false;
+
+    // Get references to chat elements
     const chatLog = document.getElementById("chat-log");
     const chatInput = document.getElementById("chat-input");
     const sendButton = document.getElementById("send-message");
     const registerButton = document.getElementById("register");
-    
+    const chatWindow = document.getElementById("chat-window");  <!-- Newly added reference -->
+
+    // Chatbot response generation function (newly added)
+    function getBotResponse(message) {
+      const lower = message.toLowerCase();
+      if (lower.includes("hello") || lower.includes("hi ") || lower.startsWith("hi")) {
+        return "Hello! How are you feeling today?";
+      } else if (lower.includes("help") || lower.includes("advice")) {
+        return "I'm here to help. What specifically is on your mind?";
+      } else if (lower.includes("sad") || lower.includes("depress") || lower.includes("upset")) {
+        return "I'm sorry you're feeling that way. Would you like to talk about what's making you feel this?";
+      } else if (lower.includes("anxious") || lower.includes("nervous")) {
+        return "It can be tough to feel anxious. Maybe try a deep breath. Want to talk about what's bothering you?";
+      } else if (lower.includes("happy") || lower.includes("good") || lower.includes("great")) {
+        return "I'm glad to hear that! What's been going well?";
+      } else if (lower.includes("stress") || lower.includes("stressed")) {
+        return "Stress can be overwhelming. Have you tried taking a short break or doing something you enjoy?";
+      } else if (lower.includes("thank") || lower.includes("thanks")) {
+        return "You're welcome! I'm here to chat whenever you need.";
+      } else if (lower.includes("bye")) {
+        return "Goodbye! I hope we can chat again soon. Take care.";
+      } else {
+        return "I hear you. Tell me more about that.";
+      }
+    }
+
+    // Send button event: handle user message and bot response
     sendButton.addEventListener("click", function() {
+      // If user exceeded message limit without registering, prompt and stop
       if (!isRegistered && messageCount >= 5) {
         alert("You must register an account before continuing. Your chat history has been saved.");
         return;
       }
-      
+
       const userMessage = chatInput.value;
-      if (!userMessage) return;
-      
+      if (!userMessage) return;  // do nothing if input is empty
+
+      // Display the user's message in the chat log
       chatLog.innerHTML += `<p class='user-message'><strong>You:</strong> ${userMessage}</p>`;
-      chatInput.value = "";
+      chatInput.value = "";  // clear the input
       messageCount++;
-      
+
+      // Generate and display the bot's response
+      const botReply = getBotResponse(userMessage);
+      setTimeout(() => {
+        chatLog.innerHTML += `<p class='bot-message'><strong>Bot:</strong> ${botReply}</p>`;
+        // Auto-scroll to bottom of chat window for the newest message
+        chatWindow.scrollTop = chatWindow.scrollHeight;
+      }, 500);
+
+      // If 5 messages reached and still not registered, prompt registration (user will see this after the bot's reply)
       if (messageCount === 5 && !isRegistered) {
         alert("You need to register an account to continue chatting. Your chat logs have been saved.");
       }
     });
 
+    // Register button (link) event: mark user as registered
     registerButton.addEventListener("click", function() {
       isRegistered = true;
       alert("Thank you for registering! Your chat history has been saved, and you may continue chatting.");
     });
   </script>
-
   <script src="flashcards.js"></script>
 </body>
 </html>

@@ -17,17 +17,18 @@ def get_information():
     
 
 def main():
-   selction = input(welcome_prompt)
-   if selction == '1':
+   while(True):
+    selection = input(welcome_prompt)
+   if selection == '1':
        print("You have selected to chat with me.")
        get_user_name
        # Add chat functionality here
-   elif selction == '2':
+   elif selection == '2':
        print("You have selected to get information.")
        get_information
        # Add information functionality here
        
-   elif selction == '3':
+   elif selection == '3':
        print("Exiting the chatbot. Goodbye!")
    else:
        print("Invalid selection. Please try again.")

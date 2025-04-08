@@ -1,6 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { Video } from 'expo-av';
+import Constants from 'expo-constants';
+
+const apiKey = Constants.expoConfig.extra.googleApiKey;
+
+console.log("Google API Key:", apiKey);
+
+GOOGLE_API_KEY=your-secure-google-api-key-here
+
 
 export default function App() {
   return (

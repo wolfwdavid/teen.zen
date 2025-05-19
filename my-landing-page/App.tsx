@@ -1,8 +1,6 @@
 import React from 'react';
-import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
-import { Video } from 'expo-av';
-
-import { StatusBar } from 'react-native';
+import { StyleSheet, Text, View, TouchableOpacity, StatusBar } from 'react-native';
+import { Video } from 'expo-video';
 
 export default function App() {
   return (
@@ -12,8 +10,8 @@ export default function App() {
         style={StyleSheet.absoluteFill}
         muted={true}
         resizeMode="cover"
-        repeat={true}
-        paused={false}
+        looping={true}
+        autoPlay
       />
       <View style={styles.overlay}>
         <Text style={styles.logo}>YOUR LIFE,{"\n"}YOUR BUILD</Text>
@@ -31,6 +29,7 @@ export default function App() {
     </View>
   );
 }
+
 
 const styles = StyleSheet.create({
   container: {

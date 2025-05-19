@@ -1,5 +1,3 @@
-// app.config.js
-import 'dotenv/config';
 
 export default {
   expo: {
@@ -10,5 +8,8 @@ export default {
     extra: {
       googleApiKey: process.env.GOOGLE_API_KEY,
     },
+    plugins: [
+      "expo-video"
+    ]
   },
 };

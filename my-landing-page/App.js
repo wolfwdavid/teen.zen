@@ -1,6 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
-import { Video } from 'expo-av';
+import { Video } from 'expo-video';
 import Constants from 'expo-constants';
 
 const apiKey = Constants.expoConfig.extra.googleApiKey;
@@ -14,7 +14,7 @@ export default function App() {
   return (
     <View style={styles.container}>
       <Video
-        source={require('./assets/background.mp4')} // Add your video to /assets
+        source={require('.assets\vid\background.mp4')} // Add your video to /assets
         style={StyleSheet.absoluteFill}
         resizeMode="cover"
         isMuted

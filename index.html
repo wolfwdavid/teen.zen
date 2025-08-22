@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-  <title>Landing Page</title>
+  <title>Landing Page with Chatbot</title>
   <style>
     * {
       box-sizing: border-box;
@@ -68,6 +68,71 @@
       width: fit-content;
       cursor: pointer;
     }
+    .chat-button {
+      position: absolute;
+      bottom: 20px;
+      right: 20px;
+      z-index: 10;
+      background: white;
+      color: black;
+      border-radius: 50%;
+      width: 50px;
+      height: 50px;
+      font-size: 24px;
+      border: none;
+      cursor: pointer;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .chat-window {
+      position: absolute;
+      bottom: 80px;
+      right: 20px;
+      width: 300px;
+      max-height: 400px;
+      background: white;
+      border-radius: 10px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .chat-messages {
+      flex: 1;
+      padding: 10px;
+      overflow-y: auto;
+      font-size: 14px;
+    }
+    .chat-input {
+      display: flex;
+      border-top: 1px solid #ddd;
+    }
+    .chat-input input {
+      flex: 1;
+      border: none;
+      padding: 10px;
+      font-size: 14px;
+      outline: none;
+    }
+    .chat-input button {
+      border: none;
+      background: #007bff;
+      color: white;
+      padding: 10px 15px;
+      cursor: pointer;
+    }
+    .message-bot {
+      background-color: #f1f1f1;
+      padding: 8px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+    }
+    .message-user {
+      background-color: #cce5ff;
+      padding: 8px;
+      border-radius: 8px;
+      margin-bottom: 6px;
+      align-self: flex-end;
+    }
   </style>
 </head>
 <body>
@@ -78,6 +143,60 @@
   <script src="https://unpkg.com/babel-standalone@6/babel.min.js"></script>
 
   <script type="text/babel">
+    const { useState } = React;
+
+    const Chatbot = () => {
+      const [open, setOpen] = useState(false);
+      const [messages, setMessages] = useState([{ text: "Hi! I'm your assistant. How can I help?", sender: 'bot' }]);
+      const [input, setInput] = useState("");
+
+      const sendMessage = async () => {
+        if (!input.trim()) return;
+        const userMsg = { text: input, sender: 'user' };
+        setMessages([...messages, userMsg]);
+        setInput("");
+
+        try {
+          const res = await fetch('http://localhost:3000/api/message', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ prompt: input })
+          });
+          const data = await res.json();
+          const botMsg = { text: data.response || "Sorry, I didn't get that.", sender: 'bot' };
+          setMessages(prev => [...prev, botMsg]);
+        } catch (err) {
+          setMessages(prev => [...prev, { text: "Error contacting server.", sender: 'bot' }]);
+        }
+      };
+
+      return (
+        <>
+          <button className="chat-button" onClick={() => setOpen(!open)}>💬</button>
+          {open && (
+            <div className="chat-window">
+              <div className="chat-messages">
+                {messages.map((msg, i) => (
+                  <div key={i} className={msg.sender === 'bot' ? 'message-bot' : 'message-user'}>
+                    {msg.text}
+                  </div>
+                ))}
+              </div>
+              <div className="chat-input">
+                <input
+                  value={input}
+                  onChange={e => setInput(e.target.value)}
+                  onKeyDown={e => e.key === 'Enter' && sendMessage()}
+                  placeholder="Type a message..."
+                />
+                <button onClick={sendMessage}>➤</button>
+              </div>
+            </div>
+          )}
+        </>
+      );
+    };
+
     const App = () => (
       <div className="container">
         <video autoPlay muted loop className="background">
@@ -97,6 +216,8 @@
           </div>
           <button className="button">SUBSCRIBE</button>
         </div>
+
+        <Chatbot />
       </div>
     );
 

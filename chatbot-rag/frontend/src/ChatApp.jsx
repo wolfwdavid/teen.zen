@@ -6,17 +6,22 @@ export default function ChatApp() {
 
   async function sendMessage() {
     if (!input.trim()) return;
-    const res = await fetch("http://localhost:8000/chat", {
+
+    // 👇 Notice we call "/chat" instead of "http://localhost:8000/chat"
+    const res = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ question: input }),
     });
+
     const data = await res.json();
-    setMessages([
-      ...messages,
+
+    setMessages((prev) => [
+      ...prev,
       { role: "user", text: input },
       { role: "bot", text: data.answer },
     ]);
+
     setInput("");
   }
 
@@ -24,7 +29,9 @@ export default function ChatApp() {
     <div className="chat-container">
       <div className="chat-box">
         {messages.map((m, i) => (
-          <div key={i} className={`msg ${m.role}`}>{m.text}</div>
+          <div key={i} className={`msg ${m.role}`}>
+            {m.text}
+          </div>
         ))}
       </div>
       <div className="chat-input">
@@ -32,6 +39,7 @@ export default function ChatApp() {
           value={input}
           onChange={(e) => setInput(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && sendMessage()}
+          placeholder="Type your question..."
         />
         <button onClick={sendMessage}>Send</button>
       </div>

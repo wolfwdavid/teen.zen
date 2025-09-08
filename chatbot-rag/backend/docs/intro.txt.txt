@@ -1,0 +1,2 @@
+Welcome to the Chatbot RAG demo!
+This chatbot uses LangChain, ChromaDB, and HuggingFace embeddings.

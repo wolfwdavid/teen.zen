@@ -1,11 +1,11 @@
 import logging
-from langchain.document_loaders import DirectoryLoader
-from langchain.embeddings import HuggingFaceBgeEmbeddings
-from langchain.llms.huggingface_text_gen_inference import HuggingFaceTextGenInference
+from langchain_community.document_loaders import DirectoryLoader 
+from langchain_community.embeddings import HuggingFaceBgeEmbeddings
+from langchain_community.llms import HuggingFaceTextGenInference
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.vectorstores import Chroma
+from langchain_community.vectorstores import Chroma
 
 logging.basicConfig(level=logging.INFO)
 
@@ -24,7 +24,7 @@ docs = loader.load_and_split(text_splitter)
 
 hf = HuggingFaceBgeEmbeddings(
     model_name="BAAI/bge-large-en-v1.5",
-    model_kwargs={"device": "cuda"},
+    model_kwargs={"device": "cpu"},
     encode_kwargs={"normalize_embeddings": True}
 )
 

@@ -16,7 +16,7 @@ export default defineConfig({
     proxy: {
       // Proxy backend API calls to FastAPI
       "/chat": {
-        target: "http://localhost:8000",
+        target: "http://localhost:9000",
         changeOrigin: true,
       },
     },

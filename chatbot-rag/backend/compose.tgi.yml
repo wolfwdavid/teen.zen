@@ -1,0 +1,19 @@
+version: "3.8"
+
+services:
+  tgi:
+    image: ghcr.io/huggingface/text-generation-inference:1.4.0
+    container_name: tgi-cpu
+    ports:
+      - "8080:80"
+    environment:
+      # Pick a smaller model for CPU, e.g. OpenHermes-2.5-Mistral-7B
+      MODEL_ID: teknium/OpenHermes-2.5-Mistral-7B
+      MAX_INPUT_LENGTH: 2048
+      MAX_TOTAL_TOKENS: 3072
+      NUM_SHARD: 1
+    deploy:
+      resources:
+        limits:
+          cpus: "4"    # optional: adjust based on your system
+          memory: 8g   # optional: adjust based on your system

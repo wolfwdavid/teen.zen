@@ -1,100 +1,188 @@
-# backend/api.py
 import os
 import logging
+import re
+import threading
+import asyncio
+import json
+from typing import Optional
+from urllib.parse import unquote
+
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
-from chain import build_rag_chain, rag_chain as _rag_chain
+from chain import (
+    build_rag_chain,
+    reindex_all,
+    rag_chain as _rag_chain,  # optional eager build import
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api")
 
-app = FastAPI(title="RAG Chat API", version="1.0.0")
+app = FastAPI(title="RAG Chatbot")
 
-# Allow your Vite dev origin by default; override with FRONTEND_ORIGIN if needed
-FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:5173")
+# CORS for Vite dev
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[FRONTEND_ORIGIN],
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global handles populated at startup
-RAG = {"chain": None, "retriever": None}
+# Globals populated on startup
+rag_chain: Optional[object] = None
+retriever: Optional[object] = None
 
 
 class ChatRequest(BaseModel):
     question: str
 
 
+# ---------- cleaning helpers ----------
+END_TOKENS_RE = re.compile(r"(?:</s>|<\|endoftext\|>|<\|im_end\|>)", re.IGNORECASE)
+BANNER_RE = re.compile(r"welcome to .*?rag demo.*", re.IGNORECASE)
+
+def clean_text(text: str) -> str:
+    text = END_TOKENS_RE.sub("", text)
+    lines = []
+    for line in text.splitlines():
+        if BANNER_RE.search(line):
+            continue
+        if "langchain" in line.lower() and "chromadb" in line.lower():
+            continue
+        lines.append(line)
+    return "\n".join(lines).strip()
+
+
 @app.on_event("startup")
-async def on_startup():
-    """Build the RAG pipeline once at server start (lazy, safe)."""
+def on_startup():
+    global rag_chain, retriever
+    app.state.rag_ready = False
+    app.state.rag_error = None
+
     logger.info("🔧 Startup: building RAG chain...")
     try:
-        # If chain was eagerly built via EAGER_BUILD, reuse it
         if _rag_chain is not None:
-            RAG["chain"] = _rag_chain
-            logger.info("♻️ Reusing eagerly built chain from module import.")
-            return
+            logger.info("Using eagerly built chain from chain.py")
+            rag_chain = _rag_chain
+        else:
+            rag_chain, retriever = build_rag_chain()
 
-        rag_chain, retriever = build_rag_chain()
-        RAG["chain"] = rag_chain
-        RAG["retriever"] = retriever
+        app.state.rag_ready = True
         logger.info("✅ RAG ready.")
     except Exception as e:
+        app.state.rag_error = str(e)
         logger.exception("❌ Failed to build RAG chain on startup: %s", e)
-        # Keep API up so /health can report degraded status
 
 
 @app.get("/health")
-async def health():
-    """Liveness/readiness probe with key config signals."""
-    status = "ok" if RAG["chain"] is not None else "degraded"
+def health():
     return {
-        "status": status,
+        "status": "ok" if getattr(app.state, "rag_ready", False) else "degraded",
         "docs_dir": os.getenv("DOCS_DIR", "./docs"),
+        "chroma_dir": os.getenv("CHROMA_DIR", "./.chroma"),
         "embed_model": os.getenv("EMBED_MODEL", "BAAI/bge-large-en-v1.5"),
-        "embed_device": os.getenv("EMBED_DEVICE", "") or "auto",
-        "tgi_url": os.getenv("TGI_URL", "http://0.0.0.0:8080/"),
+        "embed_device": os.getenv("EMBED_DEVICE", ""),
+        "tgi_url": os.getenv("TGI_URL", "http://127.0.0.1:8080/"),
         "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "512")),
+        "error": getattr(app.state, "rag_error", None),
     }
+
+
+@app.post("/reindex")
+def reindex():
+    global rag_chain, retriever
+    try:
+        rag_chain, retriever = reindex_all()
+        app.state.rag_ready = True
+        app.state.rag_error = None
+        return {"status": "ok", "message": "Reindex complete."}
+    except Exception as e:
+        app.state.rag_ready = False
+        app.state.rag_error = str(e)
+        logger.exception("Reindex failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Reindex failed: {e}")
 
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    """
-    Chat endpoint (non-streaming). Returns a single string.
-    503 if RAG not ready; 500 on generation failure.
-    """
-    if RAG["chain"] is None:
-        raise HTTPException(
-            status_code=503,
-            detail="RAG not ready. Check /health and server logs.",
-        )
+    if not getattr(app.state, "rag_ready", False) or rag_chain is None:
+        raise HTTPException(status_code=503, detail="RAG not ready. Check /health and server logs.")
+
     try:
-        response = ""
-        for chunk in RAG["chain"].stream(req.question):
-            response += chunk
-        return {"answer": response}
+        answer = ""
+        for chunk in rag_chain.stream(req.question):
+            answer += chunk
+        answer = clean_text(answer)
+        return {"answer": answer}
     except Exception as e:
-        logger.exception("Error during chat generation: %s", e)
-        raise HTTPException(status_code=500, detail="Chat generation failed.")
+        logger.exception("Chat failed: %s", e)
+        raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
 
 
-@app.post("/reindex")
-async def reindex():
-    """Rebuild docs/embeddings/vectorstore without restarting the server."""
-    try:
-        logger.info("🔁 Reindex requested: rebuilding RAG chain...")
-        rag_chain, retriever = build_rag_chain()
-        RAG["chain"] = rag_chain
-        RAG["retriever"] = retriever
-        logger.info("✅ Reindex complete.")
-        return {"status": "ok", "message": "Reindex complete."}
-    except Exception as e:
-        logger.exception("Reindex failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Reindex failed: {e}")
+# -------- SSE Streaming --------
+
+def _sse(data: str) -> str:
+    return f"data: {data}\n\n"
+
+
+@app.get("/chat/stream")
+async def chat_stream(q: str):
+    """
+    Progressive SSE streaming endpoint.
+    Connect with EventSource('/chat/stream?q=...').
+    """
+    if not getattr(app.state, "rag_ready", False) or rag_chain is None:
+        raise HTTPException(status_code=503, detail="RAG not ready. Check /health and server logs.")
+
+    question = unquote(q or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Missing question")
+
+    async def event_gen():
+        # Initial status frame
+        yield _sse(json.dumps({"type": "status", "message": "started"}))
+
+        loop = asyncio.get_event_loop()
+        queue: asyncio.Queue = asyncio.Queue()
+        SENTINEL = object()
+
+        def producer():
+            try:
+                for chunk in rag_chain.stream(question):
+                    text = chunk if isinstance(chunk, str) else str(chunk)
+                    asyncio.run_coroutine_threadsafe(queue.put(text), loop)
+            except Exception as e:
+                asyncio.run_coroutine_threadsafe(queue.put(json.dumps({"__error__": str(e)})), loop)
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(SENTINEL), loop)
+
+        thread = threading.Thread(target=producer, daemon=True)
+        thread.start()
+
+        try:
+            while True:
+                item = await queue.get()
+                if item is SENTINEL:
+                    break
+
+                if isinstance(item, str) and item.startswith('{"__error__"'):
+                    msg = json.loads(item).get("__error__", "Unknown error")
+                    yield _sse(json.dumps({"type": "error", "message": msg}))
+                    break
+
+                text = clean_text(item if isinstance(item, str) else str(item))
+                if text:
+                    yield _sse(json.dumps({"type": "token", "text": text}))
+        finally:
+            yield _sse(json.dumps({"type": "done"}))
+
+    headers = {
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+        # "X-Accel-Buffering": "no",  # uncomment if behind nginx
+    }
+    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)

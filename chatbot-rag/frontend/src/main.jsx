@@ -1,10 +1,10 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
-import ChatApp from "./ChatApp.jsx";
-import "./index.css";
+import App from "./App";
+import "./styles/theme.css"; // ⬅️ add this
 
-ReactDOM.createRoot(document.getElementById("root")).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
-    <ChatApp />
+    <App />
   </React.StrictMode>
 );

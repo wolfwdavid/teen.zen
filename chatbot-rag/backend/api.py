@@ -18,8 +18,8 @@ from chain import (
     build_rag_chain,
     reindex_all,
     get_sources,                 # returns [{source, href?, preview?}, ...]
-    rag_chain as eager_chain,    # <-- may be None if not eagerly built
-    retriever as eager_retriever # <-- may be None if not eagerly built
+    rag_chain as eager_chain,    # may be None if not eagerly built
+    retriever as eager_retriever # may be None if not eagerly built
 )
 
 logging.basicConfig(level=logging.INFO)
@@ -52,20 +52,25 @@ class ChatRequest(BaseModel):
     question: str
 
 
-# ---------- small cleaner ----------
+# ---------- cleaners ----------
 END_TOKENS_RE = re.compile(r"(?:</s>|<\|endoftext\|>|<\|im_end\|>)", re.IGNORECASE)
 BANNER_RE = re.compile(r"welcome to .*?rag demo.*", re.IGNORECASE)
 
-def clean_text(text: str) -> str:
+def clean_final(text: str) -> str:
+    """Use for full (non-streaming) replies."""
     text = END_TOKENS_RE.sub("", text or "")
     lines = []
-    for line in text.splitlines():
+    for line in (text.splitlines() if text else []):
         if BANNER_RE.search(line):
             continue
         if "langchain" in line.lower() and "chromadb" in line.lower():
             continue
         lines.append(line)
     return "\n".join(lines).strip()
+
+def clean_stream_chunk(text: str) -> str:
+    """Use for streaming tokens — DO NOT strip whitespace, just remove end tokens."""
+    return END_TOKENS_RE.sub("", text or "")
 # -----------------------------------
 
 
@@ -85,16 +90,8 @@ def on_startup():
             logger.info("Using eager rag_chain + retriever from chain.py")
             rag_chain = eager_chain
             retriever = eager_retriever
-        elif eager_chain is not None:
-            logger.info("Using eager rag_chain; building retriever...")
-            # simplest: rebuild both to ensure matching objects
-            rag_chain, retriever = build_rag_chain()
-        elif eager_retriever is not None:
-            logger.info("Using eager retriever; building chain...")
-            # simplest: rebuild both to ensure matching objects
-            rag_chain, retriever = build_rag_chain()
         else:
-            logger.info("No eager singletons; building chain + retriever...")
+            logger.info("Building chain + retriever...")
             rag_chain, retriever = build_rag_chain()
 
         app.state.rag_ready = True
@@ -120,9 +117,7 @@ def health():
 
 @app.post("/reindex")
 def reindex():
-    """
-    Delete the persisted Chroma DB and rebuild end-to-end.
-    """
+    """Delete the persisted Chroma DB and rebuild end-to-end."""
     global rag_chain, retriever
     try:
         rag_chain, retriever = reindex_all()
@@ -145,7 +140,7 @@ async def chat(req: ChatRequest):
         answer = ""
         for chunk in rag_chain.stream(req.question):
             answer += chunk
-        return {"answer": clean_text(answer), "sources": srcs}
+        return {"answer": clean_final(answer), "sources": srcs}
     except Exception as e:
         logger.exception("Chat failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
@@ -196,9 +191,10 @@ async def chat_stream(q: str):
                 if isinstance(item, str) and item.startswith('{"__error__"'):
                     yield _sse(json.dumps({"type": "error", "message": json.loads(item).get("__error__", "Unknown error")}))
                     break
-                cleaned = clean_text(item if isinstance(item, str) else str(item))
-                if cleaned:
-                    yield _sse(json.dumps({"type": "token", "text": cleaned}))
+                # IMPORTANT: don't strip spaces on streamed chunks
+                token = clean_stream_chunk(item if isinstance(item, str) else str(item))
+                if token:
+                    yield _sse(json.dumps({"type": "token", "text": token}))
         finally:
             yield _sse(json.dumps({"type": "done"}))
 

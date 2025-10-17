@@ -1,3 +1,4 @@
+# api.py
 import os
 import logging
 import re
@@ -10,18 +11,28 @@ from urllib.parse import unquote
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from chain import (
     build_rag_chain,
     reindex_all,
-    rag_chain as _rag_chain,  # optional eager build import
+    get_sources,                 # returns [{source, href?, preview?}, ...]
+    rag_chain as eager_chain,    # <-- may be None if not eagerly built
+    retriever as eager_retriever # <-- may be None if not eagerly built
 )
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("api")
 
 app = FastAPI(title="RAG Chatbot")
+
+# --- serve local docs folder for clickable citations (if present) ---
+DOCS_DIR = os.getenv("DOCS_DIR", "./docs")
+if os.path.isdir(DOCS_DIR):
+    app.mount("/docs", StaticFiles(directory=DOCS_DIR, html=False), name="docs")
+else:
+    logger.warning("Docs dir '%s' not found; /docs will not be mounted.", DOCS_DIR)
 
 # CORS for Vite dev
 app.add_middleware(
@@ -41,12 +52,12 @@ class ChatRequest(BaseModel):
     question: str
 
 
-# ---------- cleaning helpers ----------
+# ---------- small cleaner ----------
 END_TOKENS_RE = re.compile(r"(?:</s>|<\|endoftext\|>|<\|im_end\|>)", re.IGNORECASE)
 BANNER_RE = re.compile(r"welcome to .*?rag demo.*", re.IGNORECASE)
 
 def clean_text(text: str) -> str:
-    text = END_TOKENS_RE.sub("", text)
+    text = END_TOKENS_RE.sub("", text or "")
     lines = []
     for line in text.splitlines():
         if BANNER_RE.search(line):
@@ -55,27 +66,42 @@ def clean_text(text: str) -> str:
             continue
         lines.append(line)
     return "\n".join(lines).strip()
+# -----------------------------------
 
 
 @app.on_event("startup")
 def on_startup():
+    """
+    Prefer eager singletons from chain.py when present.
+    Otherwise, build once here.
+    """
     global rag_chain, retriever
     app.state.rag_ready = False
     app.state.rag_error = None
 
-    logger.info("🔧 Startup: building RAG chain...")
+    logger.info("🔧 Startup: initializing RAG...")
     try:
-        if _rag_chain is not None:
-            logger.info("Using eagerly built chain from chain.py")
-            rag_chain = _rag_chain
+        if eager_chain is not None and eager_retriever is not None:
+            logger.info("Using eager rag_chain + retriever from chain.py")
+            rag_chain = eager_chain
+            retriever = eager_retriever
+        elif eager_chain is not None:
+            logger.info("Using eager rag_chain; building retriever...")
+            # simplest: rebuild both to ensure matching objects
+            rag_chain, retriever = build_rag_chain()
+        elif eager_retriever is not None:
+            logger.info("Using eager retriever; building chain...")
+            # simplest: rebuild both to ensure matching objects
+            rag_chain, retriever = build_rag_chain()
         else:
+            logger.info("No eager singletons; building chain + retriever...")
             rag_chain, retriever = build_rag_chain()
 
         app.state.rag_ready = True
         logger.info("✅ RAG ready.")
     except Exception as e:
         app.state.rag_error = str(e)
-        logger.exception("❌ Failed to build RAG chain on startup: %s", e)
+        logger.exception("❌ Failed to initialize RAG: %s", e)
 
 
 @app.get("/health")
@@ -84,16 +110,19 @@ def health():
         "status": "ok" if getattr(app.state, "rag_ready", False) else "degraded",
         "docs_dir": os.getenv("DOCS_DIR", "./docs"),
         "chroma_dir": os.getenv("CHROMA_DIR", "./.chroma"),
-        "embed_model": os.getenv("EMBED_MODEL", "BAAI/bge-large-en-v1.5"),
+        "embed_model": os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5"),
         "embed_device": os.getenv("EMBED_DEVICE", ""),
         "tgi_url": os.getenv("TGI_URL", "http://127.0.0.1:8080/"),
-        "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "512")),
+        "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "192")),
         "error": getattr(app.state, "rag_error", None),
     }
 
 
 @app.post("/reindex")
 def reindex():
+    """
+    Delete the persisted Chroma DB and rebuild end-to-end.
+    """
     global rag_chain, retriever
     try:
         rag_chain, retriever = reindex_all()
@@ -109,21 +138,18 @@ def reindex():
 
 @app.post("/chat")
 async def chat(req: ChatRequest):
-    if not getattr(app.state, "rag_ready", False) or rag_chain is None:
+    if not getattr(app.state, "rag_ready", False) or rag_chain is None or retriever is None:
         raise HTTPException(status_code=503, detail="RAG not ready. Check /health and server logs.")
-
     try:
+        srcs = get_sources(req.question, retriever)
         answer = ""
         for chunk in rag_chain.stream(req.question):
             answer += chunk
-        answer = clean_text(answer)
-        return {"answer": answer}
+        return {"answer": clean_text(answer), "sources": srcs}
     except Exception as e:
         logger.exception("Chat failed: %s", e)
         raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
 
-
-# -------- SSE Streaming --------
 
 def _sse(data: str) -> str:
     return f"data: {data}\n\n"
@@ -131,20 +157,18 @@ def _sse(data: str) -> str:
 
 @app.get("/chat/stream")
 async def chat_stream(q: str):
-    """
-    Progressive SSE streaming endpoint.
-    Connect with EventSource('/chat/stream?q=...').
-    """
-    if not getattr(app.state, "rag_ready", False) or rag_chain is None:
+    if not getattr(app.state, "rag_ready", False) or rag_chain is None or retriever is None:
         raise HTTPException(status_code=503, detail="RAG not ready. Check /health and server logs.")
 
     question = unquote(q or "").strip()
     if not question:
         raise HTTPException(status_code=400, detail="Missing question")
 
+    srcs = get_sources(question, retriever)
+
     async def event_gen():
-        # Initial status frame
         yield _sse(json.dumps({"type": "status", "message": "started"}))
+        yield _sse(json.dumps({"type": "sources", "items": srcs}))
 
         loop = asyncio.get_event_loop()
         queue: asyncio.Queue = asyncio.Queue()
@@ -156,33 +180,27 @@ async def chat_stream(q: str):
                     text = chunk if isinstance(chunk, str) else str(chunk)
                     asyncio.run_coroutine_threadsafe(queue.put(text), loop)
             except Exception as e:
-                asyncio.run_coroutine_threadsafe(queue.put(json.dumps({"__error__": str(e)})), loop)
+                asyncio.run_coroutine_threadsafe(
+                    queue.put(json.dumps({"__error__": str(e)})), loop
+                )
             finally:
                 asyncio.run_coroutine_threadsafe(queue.put(SENTINEL), loop)
 
-        thread = threading.Thread(target=producer, daemon=True)
-        thread.start()
+        threading.Thread(target=producer, daemon=True).start()
 
         try:
             while True:
                 item = await queue.get()
                 if item is SENTINEL:
                     break
-
                 if isinstance(item, str) and item.startswith('{"__error__"'):
-                    msg = json.loads(item).get("__error__", "Unknown error")
-                    yield _sse(json.dumps({"type": "error", "message": msg}))
+                    yield _sse(json.dumps({"type": "error", "message": json.loads(item).get("__error__", "Unknown error")}))
                     break
-
-                text = clean_text(item if isinstance(item, str) else str(item))
-                if text:
-                    yield _sse(json.dumps({"type": "token", "text": text}))
+                cleaned = clean_text(item if isinstance(item, str) else str(item))
+                if cleaned:
+                    yield _sse(json.dumps({"type": "token", "text": cleaned}))
         finally:
             yield _sse(json.dumps({"type": "done"}))
 
-    headers = {
-        "Cache-Control": "no-cache",
-        "Connection": "keep-alive",
-        # "X-Accel-Buffering": "no",  # uncomment if behind nginx
-    }
+    headers = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
     return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)

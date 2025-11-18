@@ -24,7 +24,10 @@ export default function ChatBox() {
   };
 
   return (
-    <div className="chat-box" style={{ maxWidth: 700, margin: "40px auto", padding: 16 }}>
+    <div 
+     className="chat-box" 
+     style={{ maxWidth: 700, margin: "40px auto", padding: 16 }}
+    >
       <textarea
         value={question}
         onChange={(e) => setQuestion(e.target.value)}

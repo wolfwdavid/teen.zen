@@ -1,4 +1,4 @@
-﻿version: "3.8"
+version: "3.8"
 
 services:
   tgi:
@@ -7,7 +7,28 @@ services:
     ports:
       - "8080:80"
     environment:
+      # 👇 use a small, CPU-friendly model for local testing
       MODEL_ID: TinyLlama/TinyLlama-1.1B-Chat-v1.0
       MAX_INPUT_LENGTH: 1024
       MAX_TOTAL_TOKENS: 1536
       NUM_SHARD: 1
+services:
+  tgi-cpu:
+    image: ghcr.io/huggingface/text-generation-inference:2.2.1
+    container_name: tgi-cpu
+    environment:
+      - MODEL_ID=TinyLlama/TinyLlama-1.1B-Chat-v1.0
+      - HF_HUB_ENABLE_HF_TRANSFER=1
+    command:
+      - --model-id
+      - ${MODEL_ID}
+      - --max-input-length
+      - "1024"
+      - --max-total-tokens
+      - "1536"
+      - --json-output
+    ports:
+      - "8080:80"     # host:container (TGI listens on 80 inside the container)
+    volumes:
+      - ./data:/data  # cache models
+    restart: unless-stopped

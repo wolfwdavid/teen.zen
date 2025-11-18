@@ -1,0 +1,48 @@
+/* Tell the browser we support both themes (improves form controls) */
+:root { color-scheme: light dark; }
+
+/* Light theme (default) */
+:root {
+  --bg:            #ffffff;
+  --text:          #0b1020;
+  --border:        #e5e7eb;
+
+  --panel:         #ffffff;
+  --panel-border:  var(--border);
+
+  --bubble-user:       #dcfce7; /* green-50 */
+  --bubble-user-brd:   #86efac;
+
+  --bubble-assistant:  #eef2ff; /* indigo-50 */
+  --bubble-asst-brd:   #c7d2fe;
+
+  --primary:       #1d4ed8;
+  --primary-contrast: #ffffff;
+
+  --chip-bg:       #eef2ff;
+  --chip-brd:      #c7d2fe;
+  --chip-text:     #1d4ed8;
+}
+
+/* Dark theme overrides */
+:root.dark {
+  --bg:            #0b1020;
+  --text:          #e5e7eb;
+  --border:        #273143;
+
+  --panel:         #0f172a;
+  --panel-border:  #22304a;
+
+  --bubble-user:       #083d2b; /* darker green tint */
+  --bubble-user-brd:   #0ea56b;
+
+  --bubble-assistant:  #111c33; /* indigo-ish dark */
+  --bubble-asst-brd:   #334266;
+
+  --primary:       #4f7cff;
+  --primary-contrast: #0b1020;
+
+  --chip-bg:       #121f38;
+  --chip-brd:      #2a3b5e;
+  --chip-text:     #9ab4ff;
+}

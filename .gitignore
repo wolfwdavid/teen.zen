@@ -1,38 +1,95 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+# =========================================================
+# GLOBAL IGNORES FOR teen.zen / chatbot-rag PROJECT
+# =========================================================
 
-# dependencies
+# -------------------------
+# Node / Frontend
+# -------------------------
 node_modules/
-
-# Expo
-.expo/
 dist/
+build/
+.vite/
+*.local
+
+# Expo (if present)
+.expo/
 web-build/
 expo-env.d.ts
-
-# Native
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
 
 # Metro
 .metro-health-check*
 
-# debug
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+# Debug logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
 
-# macOS
+# -------------------------
+# Python / Backend
+# -------------------------
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.db
+*.sqlite3
+*.sqlite
+*.log
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Python env files
+.env
+.env.local
+.env.*.local
+
+# VSCode local settings
+.vscode/
+
+# -------------------------
+# DOCKER / MODEL WEIGHTS
+# -------------------------
+
+# DO NOT COMMIT HF MODEL WEIGHTS
+chatbot-rag/backend/data/
+chatbot-rag/backend/data/*
+
+# DO NOT COMMIT CHROMA VECTOR DB
+chatbot-rag/backend/.chroma/
+
+# DO NOT COMMIT DOCKER VOLUME MOUNTS
+chatbot-rag/backend/output/
+chatbot-rag/backend/tmp/
+chatbot-rag/backend/cache/
+
+# -------------------------
+# OS / System Files
+# -------------------------
 .DS_Store
+Thumbs.db
 *.pem
+*.key
+*.p8
+*.p12
+*.mobileprovision
 
-# local env files
-.env*.local
-
-# typescript
+# -------------------------
+# TypeScript
+# -------------------------
 *.tsbuildinfo
 
-.env
+# -------------------------
+# Lockfiles (optional)
+# -------------------------
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# =========================================================
+# END OF FILE
+# =========================================================

@@ -13,7 +13,10 @@
       padding: 0;
       height: 100%;
       font-family: Arial, sans-serif;
+      background-color: #f5f3f0; /* light background like the second page */
     }
+
+    /* === HERO SECTION === */
     .container {
       position: relative;
       height: 100vh;
@@ -68,6 +71,8 @@
       width: fit-content;
       cursor: pointer;
     }
+
+    /* === CHAT WIDGET === */
     .chat-button {
       position: absolute;
       bottom: 20px;
@@ -133,6 +138,65 @@
       margin-bottom: 6px;
       align-self: flex-end;
     }
+
+    /* === SECOND SECTION (podcast-style layout) === */
+    .info-section {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 80px 40px 120px;
+      display: flex;
+      gap: 80px;
+      align-items: flex-start;
+    }
+    .info-text {
+      flex: 1;
+      font-size: 16px;
+      line-height: 1.6;
+    }
+    .info-text p {
+      margin-bottom: 24px;
+    }
+    .info-media {
+      flex: 1.2;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+    .info-media img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .info-divider {
+      border: none;
+      border-top: 3px solid #000;
+      margin: 24px 0 8px;
+    }
+    .info-heading {
+      font-size: 28px;
+      font-weight: 700;
+      margin: 0 0 24px;
+    }
+    .info-platforms {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 32px;
+      font-weight: 700;
+      font-size: 14px;
+      letter-spacing: 0.1em;
+    }
+    .info-platforms span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    @media (max-width: 900px) {
+      .info-section {
+        flex-direction: column;
+        padding: 60px 24px 80px;
+      }
+    }
   </style>
 </head>
 <body>
@@ -160,12 +224,9 @@
         const text = input;
         setInput("");
 
-        // add user message
         setMessages(prev => [...prev, { text, sender: "user" }]);
 
         try {
-          // NOTE: this will only work if you actually have a backend
-          // running at this URL. Otherwise we fall back to a demo reply.
           const res = await fetch("http://localhost:3000/api/message", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
@@ -221,28 +282,66 @@
       );
     };
 
-    const App = () => (
-      <div className="container">
-        <video autoPlay muted loop className="background">
-          <source src="assets/vid/background.mp4" type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
-
-        <div className="overlay">
-          <div className="logo">YOUR LIFE,<br/>YOUR BUILD</div>
-          <div className="heading">
-            Navigating life isn't easy,<br/>
-            but you don't have to do it alone.
-          </div>
-          <div className="description">
-            In our technology, we talk about how we<br/>
-            can become better, happier, and healthier.
-          </div>
-          <button className="button">SUBSCRIBE</button>
+    const InfoSection = () => (
+      <section className="info-section">
+        <div className="info-text">
+          <p>
+            Write a paragraph that talks about your video podcast here.
+            Why should your prospective listeners tune in? Is it because
+            of your relatable personality, your subject matter expertise,
+            or your quirky sense of humor? Whichever reason, be sure to
+            highlight it here.
+          </p>
+          <p>
+            Write a paragraph that talks about your video podcast here.
+            Why should your prospective listeners tune in? Is it because
+            of your relatable personality, your subject matter expertise,
+            or your quirky sense of humor? Whichever reason, be sure to
+            highlight it here.
+          </p>
         </div>
 
-        <Chatbot />
-      </div>
+        <div className="info-media">
+          <img src="assets/img/podcast.jpg" alt="Person speaking into microphone" />
+          <hr className="info-divider" />
+          <h2 className="info-heading">Start Chatting</h2>
+          <div className="info-platforms">
+            <span>🎧 SPOTIFY</span>
+            <span> APPLE PODCAST</span>
+            <span>🅖 GOOGLE PODCAST</span>
+          </div>
+        </div>
+      </section>
+    );
+
+    const App = () => (
+      <>
+        {/* Hero / video section */}
+        <div className="container">
+          <video autoPlay muted loop className="background">
+            <source src="assets/vid/background.mp4" type="video/mp4" />
+            Your browser does not support the video tag.
+          </video>
+
+          <div className="overlay">
+            <div className="logo">YOUR LIFE,<br/>YOUR BUILD</div>
+            <div className="heading">
+              Navigating life isn't easy,<br/>
+              but you don't have to do it alone.
+            </div>
+            <div className="description">
+              In our technology, we talk about how we<br/>
+              can become better, happier, and healthier.
+            </div>
+            <button className="button">SUBSCRIBE</button>
+          </div>
+
+          <Chatbot />
+        </div>
+
+        {/* Second section (scroll down) */}
+        <InfoSection />
+      </>
     );
 
     const root = ReactDOM.createRoot(document.getElementById("root"));

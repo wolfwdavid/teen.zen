@@ -9,19 +9,13 @@ from langchain_community.vectorstores import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.schema import Document
-# NEW IMPORTS for type hinting
-from langchain.schema.retriever import BaseRetriever 
-from langchain.schema.embeddings import Embeddings 
-
 
 from transformers import AutoTokenizer
 from optimum.onnxruntime import ORTModelForCausalLM
-import torch # used for tensor inputs to ORT model
+import torch  # CPU tensors for ONNX model
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# ----------- RAG prompt -----------
 
 RAG_PROMPT_TEMPLATE = """
 You are a concise, helpful expert. Use ONLY the context below to answer.
@@ -36,19 +30,15 @@ User question: {question}
 Answer:
 """
 
-# ----------- config via env -----------
-
 DOCS_DIR = os.getenv("DOCS_DIR", "./docs")
 CHROMA_DIR = os.getenv("CHROMA_DIR", "./.chroma")
 CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "rag-index")
 
 EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
-EMBED_DEVICE = os.getenv("EMBED_DEVICE", "").strip().lower() # "cpu" or "cuda"
+EMBED_DEVICE = os.getenv("EMBED_DEVICE", "").strip().lower()  # "cpu" or "cuda"
 
-# Local ONNX model directory (must contain ONNX + config)
 LOCAL_ONNX_MODEL_DIR = os.getenv("LOCAL_ONNX_MODEL_DIR", "./models/local-onnx-model")
 
-# Providers for ONNX Runtime: you can try "DmlExecutionProvider" if NPU/GPU via DirectML
 ORT_PROVIDERS_ENV = os.getenv("ORT_PROVIDERS", "")
 if ORT_PROVIDERS_ENV:
     ORT_PROVIDERS = [p.strip() for p in ORT_PROVIDERS_ENV.split(",") if p.strip()]
@@ -60,13 +50,11 @@ CHUNK_SIZE = int(os.getenv("CHUNK_SIZE", "800"))
 CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
 
 
-# ----------- embeddings helpers -----------
-
 def _pick_embed_device() -> str:
     if EMBED_DEVICE in {"cpu", "cuda"}:
         return EMBED_DEVICE
     try:
-        import torch as _torch # noqa
+        import torch as _torch  # noqa
         return "cuda" if _torch.cuda.is_available() else "cpu"
     except Exception:
         return "cpu"
@@ -91,18 +79,11 @@ def _load_documents(docs_dir: str) -> List[Document]:
     all_docs: List[Document] = []
     for ld in loaders:
         docs = ld.load()
-        
-        if not docs:
-            continue
-
-        # FIX: Ensure metadata update happens BEFORE splitting.
-        # This guarantees the splitter uses the correct 'source' field.
         for d in docs:
             d.metadata = d.metadata or {}
-            # Ensure 'source' exists for citations
             d.metadata.setdefault("source", d.metadata.get("source") or "unknown")
-            
-        all_docs.extend(splitter.split_documents(docs))
+        if docs:
+            all_docs.extend(splitter.split_documents(docs))
 
     if not all_docs:
         raise RuntimeError(
@@ -118,7 +99,7 @@ def _has_persist(path: str) -> bool:
     return os.path.isdir(path) and any(True for _ in os.scandir(path))
 
 
-def _build_vectorstore(embeddings: Embeddings) -> Chroma:
+def _build_vectorstore(embeddings: HuggingFaceEmbeddings) -> Chroma:
     if _has_persist(CHROMA_DIR):
         logger.info(
             "Loading existing Chroma DB from '%s' (collection='%s') ...",
@@ -151,15 +132,7 @@ def _build_vectorstore(embeddings: Embeddings) -> Chroma:
     return vs
 
 
-# ----------- ONNX LLM wrapper -----------
-
 class OnnxChatModel:
-    """
-    Lightweight wrapper around an ONNX Runtime causal LM via optimum.
-    We do non-streaming generation and *simulate* streaming by splitting
-    the final text into chunks.
-    """
-
     def __init__(self, model_dir: str, providers: Optional[list] = None):
         if not os.path.isdir(model_dir):
             raise FileNotFoundError(
@@ -179,7 +152,7 @@ class OnnxChatModel:
 
     def generate(self, prompt: str, max_new_tokens: int = MAX_NEW_TOKENS) -> str:
         inputs = self.tokenizer(prompt, return_tensors="pt")
-        input_ids = inputs["input_ids"] # stay on CPU
+        input_ids = inputs["input_ids"]
 
         with torch.no_grad():
             gen_ids = self.model.generate(
@@ -188,16 +161,11 @@ class OnnxChatModel:
                 do_sample=False,
             )
 
-        # Slice off the prompt part
         generated = gen_ids[0, input_ids.shape[1]:]
         text = self.tokenizer.decode(generated, skip_special_tokens=True)
         return text.strip()
 
     def stream(self, prompt: str, max_new_tokens: int = MAX_NEW_TOKENS, chunk_size: int = 8):
-        """
-        Fake streaming: generate once, then yield word groups so your SSE UI
-        still "types" the answer out.
-        """
         full = self.generate(prompt, max_new_tokens=max_new_tokens)
         if not full:
             return
@@ -212,8 +180,6 @@ class OnnxChatModel:
             yield " ".join(chunk) + " "
 
 
-# ----------- RAG chain implementation -----------
-
 def _format_context(docs: List[Document]) -> str:
     parts = []
     for d in docs:
@@ -222,23 +188,14 @@ def _format_context(docs: List[Document]) -> str:
     return "\n\n---\n\n".join(parts)
 
 
-# Added explicit type hint for retriever_obj
-def get_sources(question: str, retriever_obj: BaseRetriever) -> List[Dict[str, Any]]:
-    """
-    Tiny helper used by api_v2.py to expose citation info.
-
-    Returns:
-    [{ "id": 1, "source": "docs/foo.txt", "href": "/docs/foo.txt", "preview": "first 120 chars..." }, ...]
-    """
-    # Removed type ignore due to added BaseRetriever type hint
-    docs: List[Document] = retriever_obj.get_relevant_documents(question) 
+def get_sources(question: str, retriever_obj) -> List[Dict[str, Any]]:
+    docs: List[Document] = retriever_obj.get_relevant_documents(question)  # type: ignore[attr-defined]
     items = []
     for idx, d in enumerate(docs):
         meta = d.metadata or {}
         src = meta.get("source", "unknown")
 
         href = None
-        # If source is under DOCS_DIR, turn it into a /docs/... URL
         try:
             if os.path.isabs(src):
                 rel = os.path.relpath(src, DOCS_DIR)
@@ -264,19 +221,12 @@ def get_sources(question: str, retriever_obj: BaseRetriever) -> List[Dict[str, A
 
 
 class RAGOnnxChain:
-    """
-    Simple RAG "chain" with a .stream(question) API so api_v2 can
-    reuse your existing SSE logic.
-    """
-
-    # Added explicit type hint for retriever_obj
-    def __init__(self, retriever_obj: BaseRetriever, llm: OnnxChatModel):
+    def __init__(self, retriever_obj, llm: OnnxChatModel):
         self.retriever = retriever_obj
         self.llm = llm
 
     def _build_prompt(self, question: str) -> str:
-        # Removed type ignore due to added BaseRetriever type hint
-        docs: List[Document] = self.retriever.get_relevant_documents(question) 
+        docs: List[Document] = self.retriever.get_relevant_documents(question)  # type: ignore[attr-defined]
         ctx = _format_context(docs)
         prompt = RAG_PROMPT_TEMPLATE.format(context=ctx, question=question)
         return prompt
@@ -291,18 +241,11 @@ class RAGOnnxChain:
             yield chunk
 
 
-# ----------- public builders used by api_v2 -----------
-
-# Added explicit type hints for the return tuple
-def build_rag_chain() -> Tuple[RAGOnnxChain, BaseRetriever]:
-    """
-    Build and return (rag_chain, retriever).
-    """
+def build_rag_chain() -> Tuple[RAGOnnxChain, object]:
     device = _pick_embed_device()
     logger.info("Using embeddings model '%s' on device '%s'", EMBED_MODEL, device)
 
-    # Note: HuggingFaceEmbeddings inherits from BaseEmbeddings
-    embeddings: Embeddings = HuggingFaceEmbeddings(
+    embeddings = HuggingFaceEmbeddings(
         model_name=EMBED_MODEL,
         model_kwargs={"device": device},
         encode_kwargs={"normalize_embeddings": True},
@@ -310,33 +253,25 @@ def build_rag_chain() -> Tuple[RAGOnnxChain, BaseRetriever]:
 
     vectorstore = _build_vectorstore(embeddings)
 
-    # MMR for better diversity
-    retriever_obj: BaseRetriever = vectorstore.as_retriever(
+    retriever_obj = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={"k": 4, "fetch_k": 12, "lambda_mult": 0.5},
     )
 
-    # ONNX model
     llm = OnnxChatModel(model_dir=LOCAL_ONNX_MODEL_DIR, providers=ORT_PROVIDERS)
     rag_chain = RAGOnnxChain(retriever_obj=retriever_obj, llm=llm)
     return rag_chain, retriever_obj
 
 
-# Added explicit type hints for the return tuple
-def reindex_all() -> Tuple[RAGOnnxChain, BaseRetriever]:
-    """
-    Delete the persisted DB and rebuild from docs.
-    """
+def reindex_all() -> Tuple[RAGOnnxChain, object]:
     if os.path.isdir(CHROMA_DIR):
         logger.info("Deleting Chroma dir '%s' for full reindex ...", CHROMA_DIR)
         shutil.rmtree(CHROMA_DIR, ignore_errors=True)
     return build_rag_chain()
 
 
-# Optional eager singletons
 rag_chain: Optional[RAGOnnxChain] = None
-# Changed type hint from Optional[object] to the more specific BaseRetriever
-retriever: Optional[BaseRetriever] = None 
+retriever: Optional[object] = None
 
 if os.getenv("EAGER_BUILD", "").lower() in {"1", "true", "yes"}:
     rag_chain, retriever = build_rag_chain()

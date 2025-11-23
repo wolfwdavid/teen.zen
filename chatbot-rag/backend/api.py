@@ -1,4 +1,3 @@
-# api.py
 import os
 import logging
 import re
@@ -71,10 +70,7 @@ def clean_final(text: str) -> str:
 
 
 def clean_stream_chunk(text: str) -> str:
-    """
-    Use for streaming tokens — DO NOT strip spaces, just remove end tokens.
-    This is what keeps spaces between words.
-    """
+    """Use for streaming tokens — DO NOT strip whitespace, just remove end tokens."""
     return END_TOKENS_RE.sub("", text or "")
 # -----------------------------------
 
@@ -141,7 +137,6 @@ async def chat(req: ChatRequest):
     if not getattr(app.state, "rag_ready", False) or rag_chain is None or retriever is None:
         raise HTTPException(status_code=503, detail="RAG not ready. Check /health and server logs.")
     try:
-        logger.info('💬 /chat question="%s"', req.question)
         srcs = get_sources(req.question, retriever)
         answer = ""
         for chunk in rag_chain.stream(req.question):
@@ -166,10 +161,11 @@ async def chat_stream(q: str):
         raise HTTPException(status_code=400, detail="Missing question")
 
     logger.info('💬 /chat/stream question="%s"', question)
+
     srcs = get_sources(question, retriever)
 
     async def event_gen():
-        # status + citations first
+        # initial frames
         yield _sse(json.dumps({"type": "status", "message": "started"}))
         yield _sse(json.dumps({"type": "sources", "items": srcs}))
 
@@ -197,8 +193,10 @@ async def chat_stream(q: str):
                 if item is SENTINEL:
                     break
                 if isinstance(item, str) and item.startswith('{"__error__"'):
-                    msg = json.loads(item).get("__error__", "Unknown error")
-                    yield _sse(json.dumps({"type": "error", "message": msg}))
+                    yield _sse(json.dumps({
+                        "type": "error",
+                        "message": json.loads(item).get("__error__", "Unknown error"),
+                    }))
                     break
                 token = clean_stream_chunk(item if isinstance(item, str) else str(item))
                 if token:

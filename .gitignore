@@ -1,98 +1,45 @@
-# =========================================================
-# GLOBAL IGNORES FOR teen.zen / chatbot-rag PROJECT
-# =========================================================
-
-# -------------------------
-# Node / Frontend
-# -------------------------
+# ---- Node / frontend ----
 node_modules/
 dist/
 build/
-.vite/
-*.local
-
-# Expo (if present)
-.expo/
-web-build/
-expo-env.d.ts
-
-# Metro
-.metro-health-check*
-
-# Debug logs
+*.log
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-pnpm-debug.log*
 
-# -------------------------
-# Python / Backend
-# -------------------------
-__pycache__/
-*.pyc
+# Vite cache
+.vite/
+
+# ---- Python / backend ----
+backend/.venv/
+backend/venv/
+**/__pycache__/
+*.py[cod]
 *.pyo
 *.pyd
-*.db
-*.sqlite3
-*.sqlite
-*.log
+*.pyc
 
-# Virtual environments
-.venv/
-venv/
-env/
-ENV/
-
-# Python env files
-.env
-.env.local
-.env.*.local
-
-# VSCode local settings
-.vscode/
-
-# -------------------------
-# DOCKER / MODEL WEIGHTS
-# -------------------------
-
-# DO NOT COMMIT HF MODEL WEIGHTS
-chatbot-rag/backend/data/
-chatbot-rag/backend/data/*
-
-# DO NOT COMMIT CHROMA VECTOR DB
+# Chroma vector DB
 chatbot-rag/backend/.chroma/
 
-# DO NOT COMMIT DOCKER VOLUME MOUNTS
-chatbot-rag/backend/output/
-chatbot-rag/backend/tmp/
-chatbot-rag/backend/cache/
+# HuggingFace / TGI model cache
+chatbot-rag/backend/data/
 
-# -------------------------
-# OS / System Files
-# -------------------------
+# ---- OS / editor junk ----
 .DS_Store
 Thumbs.db
-*.pem
-*.key
-*.p8
-*.p12
-*.mobileprovision
+*.swp
+*.swo
+.vscode/
+.idea/
 
-# -------------------------
-# TypeScript
-# -------------------------
+# ---- Env / secrets ----
+.env
+.env.*
+*.env.local
+*.env.development.local
+*.env.production.local
+*.env.test.local
+
+# ---- Misc ----
 *.tsbuildinfo
-
-# -------------------------
-# Lockfiles (optional)
-# -------------------------
-package-lock.json
-yarn.lock
-pnpm-lock.yaml
-
-# =========================================================
-# END OF FILE
-# =========================================================
-
-
-## This is Another TEST!

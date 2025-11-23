@@ -1,7 +1,7 @@
 import os
 import shutil
 import logging
-from typing import Tuple, Optional, List, Dict
+from typing import Tuple, Optional, List
 
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
 from langchain_huggingface import HuggingFaceEmbeddings, HuggingFaceEndpoint
@@ -9,9 +9,10 @@ from langchain_community.vectorstores import Chroma
 from langchain.prompts import PromptTemplate
 from langchain.schema.runnable import RunnablePassthrough
 from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema import Document
 
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("chain")
 
 RAG_PROMPT_TEMPLATE = """
 You are a concise, helpful expert. Use ONLY the context below to answer.
@@ -27,23 +28,28 @@ Answer:
 """
 
 # --- config via env (safe defaults) ---
-DOCS_DIR           = os.getenv("DOCS_DIR", "./docs")
-CHROMA_DIR         = os.getenv("CHROMA_DIR", "./.chroma")   # persisted index location
-CHROMA_COLLECTION  = os.getenv("CHROMA_COLLECTION", "rag-index")
+DOCS_DIR          = os.getenv("DOCS_DIR", "./docs")
+CHROMA_DIR        = os.getenv("CHROMA_DIR", "./.chroma")   # persisted index location
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "rag-index")
 
-# smaller, faster default on CPU:
-EMBED_MODEL        = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
-FORCE_DEVICE       = os.getenv("EMBED_DEVICE", "").strip().lower()  # "cpu" or "cuda"
-TGI_URL            = os.getenv("TGI_URL", "http://127.0.0.1:8080/")
+# smaller, CPU-friendly embeddings
+EMBED_MODEL       = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+FORCE_DEVICE      = os.getenv("EMBED_DEVICE", "").strip().lower()  # "cpu" or "cuda"
 
-MAX_NEW_TOKENS     = int(os.getenv("MAX_NEW_TOKENS", "120"))  # shorter = faster
+# TGI URL – you already have TinyLlama running here
+TGI_URL           = os.getenv("TGI_URL", "http://127.0.0.1:8080/")
+
+# generation settings
+MAX_NEW_TOKENS     = int(os.getenv("MAX_NEW_TOKENS", "120"))
 TEMPERATURE        = float(os.getenv("TEMPERATURE", "0.5"))
 REPETITION_PENALTY = float(os.getenv("REPETITION_PENALTY", "1.03"))
-CHUNK_SIZE         = int(os.getenv("CHUNK_SIZE", "800"))       # leaner chunks
-CHUNK_OVERLAP      = int(os.getenv("CHUNK_OVERLAP", "80"))
+
+CHUNK_SIZE    = int(os.getenv("CHUNK_SIZE", "800"))
+CHUNK_OVERLAP = int(os.getenv("CHUNK_OVERLAP", "80"))
 
 
 def _pick_device() -> str:
+    """Pick device for embeddings."""
     if FORCE_DEVICE in {"cpu", "cuda"}:
         return FORCE_DEVICE
     try:
@@ -56,26 +62,43 @@ def _pick_device() -> str:
 def _load_documents(docs_dir: str):
     """
     Load .txt and .md recursively using lightweight loaders.
-    Also inject 'source' metadata to help with future citations.
+    Also ensure 'source' metadata exists for citations.
     """
     if not os.path.isdir(docs_dir):
         raise FileNotFoundError(
-            f"Directory not found: '{docs_dir}'. Create it and add .txt/.md files."
+            f"Directory not found: '{docs_dir}'. "
+            "Create it and add .txt/.md files."
         )
 
     loaders = [
-        DirectoryLoader(docs_dir, glob="**/*.txt", loader_cls=TextLoader, show_progress=True),
-        DirectoryLoader(docs_dir, glob="**/*.md",  loader_cls=TextLoader, show_progress=True),
+        DirectoryLoader(
+            docs_dir,
+            glob="**/*.txt",
+            loader_cls=TextLoader,
+            show_progress=True,
+        ),
+        DirectoryLoader(
+            docs_dir,
+            glob="**/*.md",
+            loader_cls=TextLoader,
+            show_progress=True,
+        ),
     ]
 
-    splitter = RecursiveCharacterTextSplitter(chunk_size=CHUNK_SIZE, chunk_overlap=CHUNK_OVERLAP)
-    all_docs = []
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=CHUNK_SIZE,
+        chunk_overlap=CHUNK_OVERLAP,
+    )
+
+    all_docs: List[Document] = []
     for ld in loaders:
         docs = ld.load()
+        # make sure each doc has a 'source' field
         for d in docs:
             d.metadata = d.metadata or {}
-            # ensure we always have some source
-            d.metadata.setdefault("source", d.metadata.get("source") or "unknown")
+            if "source" not in d.metadata or not d.metadata["source"]:
+                # fall back to file path if present
+                d.metadata["source"] = d.metadata.get("source") or d.metadata.get("file_path") or "unknown"
         if docs:
             all_docs.extend(splitter.split_documents(docs))
 
@@ -90,6 +113,7 @@ def _load_documents(docs_dir: str):
 
 
 def _has_persist(path: str) -> bool:
+    """Return True if the Chroma directory has any files (already persisted)."""
     return os.path.isdir(path) and any(True for _ in os.scandir(path))
 
 
@@ -130,6 +154,9 @@ def _build_vectorstore(embeddings: HuggingFaceEmbeddings):
 
 
 def build_rag_chain() -> Tuple[object, object]:
+    """
+    Build and return (rag_chain, retriever).
+    """
     device = _pick_device()
     logger.info("Using embeddings model '%s' on device '%s'", EMBED_MODEL, device)
 
@@ -141,7 +168,7 @@ def build_rag_chain() -> Tuple[object, object]:
 
     vectorstore = _build_vectorstore(embeddings)
 
-    # MMR: better relevance with a tight prompt budget
+    # MMR retriever: better diversity with small prompt budget
     retriever = vectorstore.as_retriever(
         search_type="mmr",
         search_kwargs={"k": 4, "fetch_k": 12, "lambda_mult": 0.5},
@@ -158,51 +185,55 @@ def build_rag_chain() -> Tuple[object, object]:
     )
 
     rag_prompt = PromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
+    # This chain supports .stream(question) which we use in api.py
     rag_chain = {"context": retriever, "question": RunnablePassthrough()} | rag_prompt | llm
     return rag_chain, retriever
 
 
 def reindex_all() -> Tuple[object, object]:
-    """Delete the persisted Chroma DB and rebuild from docs."""
+    """
+    Delete the persisted DB and rebuild from docs.
+    """
     if os.path.isdir(CHROMA_DIR):
         logger.info("Deleting Chroma dir '%s' for full reindex ...", CHROMA_DIR)
         shutil.rmtree(CHROMA_DIR, ignore_errors=True)
     return build_rag_chain()
 
 
-def get_sources(question: str, retriever) -> List[Dict]:
+def get_sources(question: str, retriever_obj) -> list:
     """
-    Return a small list of citation objects:
-    [{ "id": 1, "source": "...", "href": "/docs/...", "preview": "..." }, ...]
+    Return a list of citation dicts:
+    [{ "source": str, "href": str | None, "preview": str | None }, ...]
     """
-    docs = retriever.get_relevant_documents(question)
-    seen = set()
-    out: List[Dict] = []
-    for i, d in enumerate(docs, start=1):
-        src = (d.metadata or {}).get("source", "unknown")
-        if src in seen:
-            continue
-        seen.add(src)
+    sources = []
+    try:
+        # Using deprecated get_relevant_documents is fine for now
+        docs: List[Document] = retriever_obj.get_relevant_documents(question)  # type: ignore[attr-defined]
+    except Exception as e:
+        logger.warning("get_sources failed: %s", e)
+        return []
 
+    for i, d in enumerate(docs):
+        meta = d.metadata or {}
+        src_label = meta.get("source") or f"doc_{i+1}"
+        # If DOCS_DIR is served at /docs, build href relative to it
+        file_path = meta.get("source") or meta.get("file_path")
         href = None
-        # heuristic: if it looks like a local file, link to /docs
-        base = os.path.basename(src)
-        if base and "." in base:
-            href = f"/docs/{base}"
-
-        preview = (d.page_content or "").strip().replace("\n", " ")
-        if len(preview) > 160:
-            preview = preview[:157] + "..."
-
-        out.append(
+        if file_path and isinstance(file_path, str):
+            # normalize path & strip DOCS_DIR prefix if present
+            rel = os.path.relpath(file_path, DOCS_DIR) if os.path.isabs(file_path) or file_path.startswith(DOCS_DIR) else file_path
+            href = f"/docs/{rel.replace(os.sep, '/')}"
+        preview = (d.page_content or "").strip()
+        if len(preview) > 200:
+            preview = preview[:200] + "..."
+        sources.append(
             {
-                "id": i,
-                "source": src,
+                "source": src_label,
                 "href": href,
                 "preview": preview,
             }
         )
-    return out
+    return sources
 
 
 # Optional eager build (disabled unless explicitly requested)

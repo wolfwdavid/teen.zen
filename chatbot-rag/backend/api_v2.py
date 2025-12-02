@@ -1,10 +1,10 @@
-# api_v2.py
 import os
 import logging
 import threading
 import asyncio
 import json
-from typing import Optional
+import time # <-- NEW: Import time module
+from typing import Optional, Any
 from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException
@@ -12,6 +12,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+from langchain_core.retrievers import BaseRetriever
 
 from chain_v2 import (
     build_rag_chain,
@@ -40,8 +42,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-rag_chain: Optional[object] = None
-retriever: Optional[object] = None
+# Use Any for rag_chain since it's a custom class (RAGOnnxChain)
+rag_chain: Optional[Any] = None
+# FIX: Use BaseRetriever for correct type hinting
+retriever: Optional[BaseRetriever] = None
 
 
 class ChatRequest(BaseModel):
@@ -56,10 +60,12 @@ def on_startup():
 
     logger.info("🔧 Startup (V2): initializing RAG + ONNX...")
     try:
+        # BuildRAGChain returns (RAGOnnxChain, BaseRetriever)
         if eager_chain is not None and eager_retriever is not None:
             logger.info("Using eager rag_chain + retriever from chain_v2")
             rag_chain = eager_chain
-            retriever = eager_retriever
+            # We explicitly cast eager_retriever here for typing clarity if needed
+            retriever = eager_retriever 
         else:
             logger.info("Building chain + retriever...")
             rag_chain, retriever = build_rag_chain()
@@ -89,6 +95,7 @@ def health():
 def reindex():
     global rag_chain, retriever
     try:
+        # reindex_all returns (RAGOnnxChain, BaseRetriever)
         rag_chain, retriever = reindex_all()
         app.state.rag_ready = True
         app.state.rag_error = None
@@ -105,6 +112,7 @@ async def chat(req: ChatRequest):
     if not getattr(app.state, "rag_ready", False) or rag_chain is None or retriever is None:
         raise HTTPException(status_code=503, detail="RAG V2 not ready. Check /health and logs.")
     try:
+        # get_sources (now fixed in chain_v2.py) uses the .invoke() method
         srcs = get_sources(req.question, retriever)
         answer = rag_chain.invoke(req.question)  # type: ignore[union-attr]
         return {"answer": answer, "sources": srcs}
@@ -127,9 +135,14 @@ async def chat_stream(q: str):
         raise HTTPException(status_code=400, detail="Missing question")
 
     logger.info("💬 /chat/stream (V2) question=%r", question)
+    
+    # Get sources immediately (synchronous blocking call)
     srcs = get_sources(question, retriever)
 
     async def event_gen():
+        # --- Start Timer ---
+        start_time = time.time()
+
         yield _sse(json.dumps({"type": "status", "message": "started"}))
         yield _sse(json.dumps({"type": "sources", "items": srcs}))
 
@@ -167,6 +180,13 @@ async def chat_stream(q: str):
                 if token:
                     yield _sse(json.dumps({"type": "token", "text": token}))
         finally:
+            # --- Stop Timer & Yield Timing Data ---
+            end_time = time.time()
+            elapsed_time = end_time - start_time
+            
+            # Send the final timing chunk before 'done'
+            yield _sse(json.dumps({"type": "perf_time", "data": f"{elapsed_time:.2f}"}))
+            
             yield _sse(json.dumps({"type": "done"}))
 
     headers = {"Cache-Control": "no-cache", "Connection": "keep-alive"}

@@ -1,31 +1,41 @@
-# ---- Node / frontend ----
+Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+
+---- Node / Frontend ----
+
 node_modules/
 dist/
 build/
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
+.log
+npm-debug.
+yarn-debug.*
+yarn-error.*
 
-# Vite cache
+Vite cache
+
 .vite/
 
-# ---- Python / backend ----
-backend/.venv/
-backend/venv/
-**/__pycache__/
-*.py[cod]
-*.pyo
-*.pyd
-*.pyc
+---- Python / Backend & Model Data (Ignored ANYWHERE) ----
 
-# Chroma vector DB
-chatbot-rag/backend/.chroma/
+Virtual Environments and Cache
 
-# HuggingFace / TGI model cache
-chatbot-rag/backend/data/
+Use double-asterisk (**) for any depth
 
-# ---- OS / editor junk ----
+**/.venv/
+**/pycache/ # Corrected: Added leading and trailing underscores
+**/.chroma/
+
+Large Model Data Files
+
+Corrected: Added leading asterisk (*) for file match
+
+**/.onnx
+**/.onnx_data
+**/.bin
+**/.h5
+**/*.model
+
+---- OS / editor junk ----
+
 .DS_Store
 Thumbs.db
 *.swp
@@ -33,13 +43,32 @@ Thumbs.db
 .vscode/
 .idea/
 
-# ---- Env / secrets ----
+---- Local Env / Secrets ----
+
 .env
 .env.*
-*.env.local
-*.env.development.local
-*.env.production.local
-*.env.test.local
 
-# ---- Misc ----
-*.tsbuildinfo
+... (existing content above)
+
+---- Python / Backend & Model Data (Ignored ANYWHERE) ----
+
+Virtual Environments and Cache
+
+Use double-asterisk (**) for any depth
+
+**/.venv/
+**/pycache/
+**/.chroma/
+
+🚨 NEW: Ignore Hugging Face/Model Cache Directory
+
+chatbot-rag/backend/data/
+**/data/
+
+Large Model Data Files
+
+Corrected: Added leading asterisk (*) for file match
+
+**/*.onnx
+
+... (existing content below)

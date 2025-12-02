@@ -1,40 +1,45 @@
-# Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
 
-# dependencies
+---- Node / Frontend ----
+
 node_modules/
-
-# Expo
-.expo/
 dist/
-web-build/
-expo-env.d.ts
-
-# Native
-*.orig.*
-*.jks
-*.p8
-*.p12
-*.key
-*.mobileprovision
-
-# Metro
-.metro-health-check*
-
-# debug
-npm-debug.*
+build/
+.log
+npm-debug.
 yarn-debug.*
 yarn-error.*
 
-# macOS
+Vite cache
+
+.vite/
+
+---- Python / Backend & Model Data (Ignored ANYWHERE) ----
+
+Virtual Environments and Cache
+
+**/.venv/
+**/pycache/
+**/.chroma/
+
+Large Model Data Files
+
+**/.onnx
+**/.onnx_data
+**/.bin
+**/.h5
+**/*.model
+
+---- OS / editor junk ----
+
 .DS_Store
-*.pem
+Thumbs.db
+*.swp
+*.swo
+.vscode/
+.idea/
 
-# local env files
-.env*.local
-
-# typescript
-*.tsbuildinfo
+---- Local Env / Secrets ----
 
 .env
-
-.chroma/
+.env.*

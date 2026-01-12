@@ -1,193 +1,151 @@
 import os
 import logging
-import threading
-import asyncio
-import json
-import time # <-- NEW: Import time module
-from typing import Optional, Any
-from urllib.parse import unquote
+import time
+from typing import Dict, Any, Generator # <-- Generator added here
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
-from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from sse_starlette.sse import EventSourceResponse
+from langchain_core.runnables import RunnableConfig
 
-from langchain_core.retrievers import BaseRetriever
-
+# Import only the necessary components from chain_v2
 from chain_v2 import (
     build_rag_chain,
-    reindex_all,
-    get_sources,
-    rag_chain as eager_chain,
-    retriever as eager_retriever,
+    get_vector_store
+    # Removed: reindex_all, which is no longer defined
 )
 
+# Setup logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("api_v2")
+logger = logging.getLogger(__name__)
 
-app = FastAPI(title="RAG Chatbot – V2 (ONNX)")
+# --- Initialization ---
 
-DOCS_DIR = os.getenv("DOCS_DIR", "./docs")
-if os.path.isdir(DOCS_DIR):
-    app.mount("/docs", StaticFiles(directory=DOCS_DIR, html=False), name="docs")
-else:
-    logger.warning("Docs dir '%s' not found; /docs will not be mounted.", DOCS_DIR)
+# Initialize the FastAPI application
+app = FastAPI(title="Chatbot RAG API V2")
 
+# Configure CORS
+origins = [
+    "http://localhost",
+    "http://localhost:5173",  # Assuming your React/Vite app runs here
+    "http://127.0.0.0:5173",
+]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Use Any for rag_chain since it's a custom class (RAGOnnxChain)
-rag_chain: Optional[Any] = None
-# FIX: Use BaseRetriever for correct type hinting
-retriever: Optional[BaseRetriever] = None
+# Global variables to hold the RAG chain and retriever instance
+rag_chain = None
+retriever = None
 
-
-class ChatRequest(BaseModel):
-    question: str
-
+# --- Startup/Shutdown Events ---
 
 @app.on_event("startup")
-def on_startup():
+async def on_startup():
+    """Initializes the RAG chain and model on application startup."""
     global rag_chain, retriever
-    app.state.rag_ready = False
-    app.state.rag_error = None
-
     logger.info("🔧 Startup (V2): initializing RAG + ONNX...")
     try:
-        # BuildRAGChain returns (RAGOnnxChain, BaseRetriever)
-        if eager_chain is not None and eager_retriever is not None:
-            logger.info("Using eager rag_chain + retriever from chain_v2")
-            rag_chain = eager_chain
-            # We explicitly cast eager_retriever here for typing clarity if needed
-            retriever = eager_retriever 
-        else:
-            logger.info("Building chain + retriever...")
-            rag_chain, retriever = build_rag_chain()
-
-        app.state.rag_ready = True
-        logger.info("✅ RAG V2 ready.")
+        # Load the RAG chain and vector store
+        rag_chain, retriever = build_rag_chain()
+        logger.info("✅ Startup (V2): RAG chain and model loaded successfully.")
     except Exception as e:
-        app.state.rag_error = str(e)
-        logger.exception("❌ Failed to initialize RAG V2: %s", e)
+        # NOTE: This block is triggered by the ONNX/DML error you saw
+        logger.error(f"❌ Failed to initialize RAG V2: {e}", exc_info=True)
+        # Set chain to None to indicate failure, so the chat endpoint can report it.
+        rag_chain = None
 
+@app.on_event("shutdown")
+async def on_shutdown():
+    """Perform cleanup tasks on shutdown (optional, but good practice)."""
+    logger.info("🧹 Shutdown (V2): Cleaning up resources...")
+    pass
+
+# --- Health Check ---
 
 @app.get("/health")
-def health():
-    return {
-        "status": "ok" if getattr(app.state, "rag_ready", False) else "degraded",
-        "docs_dir": DOCS_DIR,
-        "chroma_dir": os.getenv("CHROMA_DIR", "./.chroma"),
-        "embed_model": os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5"),
-        "embed_device": os.getenv("EMBED_DEVICE", ""),
-        "onnx_model_dir": os.getenv("LOCAL_ONNX_MODEL_DIR", "./models/local-onnx-model"),
-        "max_new_tokens": int(os.getenv("MAX_NEW_TOKENS", "120")),
-        "error": getattr(app.state, "rag_error", None),
+async def health_check():
+    """Simple health check endpoint."""
+    return {"status": "ok", "chain_loaded": rag_chain is not None}
+
+# --- Chat Endpoint (SSE Streaming) ---
+
+# CRITICAL FIX: The function must be a synchronous generator (def) and yield directly.
+def stream_rag_response(question: str) -> Generator[Dict[str, Any], None, None]:
+    """Generator function for streaming the RAG chain response."""
+    global rag_chain, retriever
+
+    if rag_chain is None:
+        # This will be triggered if the startup failed
+        yield {
+            "type": "error",
+            "message": "RAG model is not initialized or failed to load. Check server logs."
+        }
+        yield {"type": "end"}
+        return
+
+    # 1. Start timer
+    start_time = time.time()
+    
+    # 2. Get the context (source documents)
+    try:
+        # Use a simplified search to get context before generation starts
+        docs = retriever.invoke(question)
+        context_sources = [{"source": doc.metadata.get('source', 'Unknown'), 
+                            "page": doc.metadata.get('page', 'Unknown')} for doc in docs]
+    except Exception as e:
+        logger.error(f"Error retrieving context: {e}", exc_info=True)
+        context_sources = []
+
+
+    # 3. Yield the context/metadata package
+    yield {
+        "type": "context",
+        "sources": context_sources,
+        "latency": 0.0 # Will be updated in the 'end' event
     }
 
-
-@app.post("/reindex")
-def reindex():
-    global rag_chain, retriever
+    # 4. Iterate through the LLM output (the generation phase)
+    full_response = ""
     try:
-        # reindex_all returns (RAGOnnxChain, BaseRetriever)
-        rag_chain, retriever = reindex_all()
-        app.state.rag_ready = True
-        app.state.rag_error = None
-        return {"status": "ok", "message": "Reindex complete."}
+        # The rag_chain.invoke is a blocking call, which is fine for a synchronous generator
+        response = rag_chain.invoke(question)
+        full_response = response.strip()
+        
+        # Simulate streaming by sending the whole response as one chunk
+        yield {
+            "type": "stream",
+            "chunk": full_response
+        }
+
     except Exception as e:
-        app.state.rag_ready = False
-        app.state.rag_error = str(e)
-        logger.exception("Reindex failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Reindex failed: {e}")
-
-
-@app.post("/chat")
-async def chat(req: ChatRequest):
-    if not getattr(app.state, "rag_ready", False) or rag_chain is None or retriever is None:
-        raise HTTPException(status_code=503, detail="RAG V2 not ready. Check /health and logs.")
-    try:
-        # get_sources (now fixed in chain_v2.py) uses the .invoke() method
-        srcs = get_sources(req.question, retriever)
-        answer = rag_chain.invoke(req.question)  # type: ignore[union-attr]
-        return {"answer": answer, "sources": srcs}
-    except Exception as e:
-        logger.exception("Chat failed: %s", e)
-        raise HTTPException(status_code=500, detail=f"Chat failed: {e}")
-
-
-def _sse(data: str) -> str:
-    return f"data: {data}\n\n"
+        error_message = f"An error occurred during generation: {e}"
+        logger.error(error_message, exc_info=True)
+        yield {
+            "type": "error",
+            "message": error_message
+        }
+    
+    # 5. End event with timing
+    end_time = time.time()
+    yield {
+        "type": "end",
+        "latency": round(end_time - start_time, 2),
+        "full_response": full_response,
+        "sources": context_sources
+    }
 
 
 @app.get("/chat/stream")
 async def chat_stream(q: str):
-    if not getattr(app.state, "rag_ready", False) or rag_chain is None or retriever is None:
-        raise HTTPException(status_code=503, detail="RAG V2 not ready. Check /health and logs.")
-
-    question = unquote(q or "").strip()
-    if not question:
-        raise HTTPException(status_code=400, detail="Missing question")
-
-    logger.info("💬 /chat/stream (V2) question=%r", question)
-    
-    # Get sources immediately (synchronous blocking call)
-    srcs = get_sources(question, retriever)
-
-    async def event_gen():
-        # --- Start Timer ---
-        start_time = time.time()
-
-        yield _sse(json.dumps({"type": "status", "message": "started"}))
-        yield _sse(json.dumps({"type": "sources", "items": srcs}))
-
-        loop = asyncio.get_event_loop()
-        queue: asyncio.Queue = asyncio.Queue()
-        SENTINEL = object()
-
-        def producer():
-            try:
-                for chunk in rag_chain.stream(question):  # type: ignore[union-attr]
-                    text = chunk if isinstance(chunk, str) else str(chunk)
-                    asyncio.run_coroutine_threadsafe(queue.put(text), loop)
-            except Exception as e:
-                asyncio.run_coroutine_threadsafe(
-                    queue.put(json.dumps({"__error__": str(e)})),
-                    loop,
-                )
-            finally:
-                asyncio.run_coroutine_threadsafe(queue.put(SENTINEL), loop)
-
-        threading.Thread(target=producer, daemon=True).start()
-
-        try:
-            while True:
-                item = await queue.get()
-                if item is SENTINEL:
-                    break
-
-                if isinstance(item, str) and item.startswith('{"__error__"'):
-                    msg = json.loads(item).get("__error__", "Unknown error")
-                    yield _sse(json.dumps({"type": "error", "message": msg}))
-                    break
-
-                token = item if isinstance(item, str) else str(item)
-                if token:
-                    yield _sse(json.dumps({"type": "token", "text": token}))
-        finally:
-            # --- Stop Timer & Yield Timing Data ---
-            end_time = time.time()
-            elapsed_time = end_time - start_time
-            
-            # Send the final timing chunk before 'done'
-            yield _sse(json.dumps({"type": "perf_time", "data": f"{elapsed_time:.2f}"}))
-            
-            yield _sse(json.dumps({"type": "done"}))
-
-    headers = {"Cache-Control": "no-cache", "Connection": "keep-alive"}
-    return StreamingResponse(event_gen(), media_type="text/event-stream", headers=headers)
+    """
+    Endpoint for streaming RAG responses using Server-Sent Events (SSE).
+    :param q: The user's question.
+    """
+    logger.info(f"Received stream request: {q}")
+    # EventSourceResponse expects an iterable (which stream_rag_response now is).
+    return EventSourceResponse(stream_rag_response(q))

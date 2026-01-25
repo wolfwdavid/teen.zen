@@ -1,41 +1,75 @@
-Learn more https://docs.github.com/en/get-started/getting-started-with-git/ignoring-files
+############################################
+# Secrets / Environment
+############################################
+.env
+.env.*
+.envrc
+*.key
+*.pem
 
----- Node / Frontend ----
-
+############################################
+# Node / Frontend
+############################################
 node_modules/
 dist/
 build/
-.log
-npm-debug.
+.vite/
+npm-debug.*
 yarn-debug.*
 yarn-error.*
 
-Vite cache
+############################################
+# Python
+############################################
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.venv/
+venv/
 
-.vite/
-
----- Python / Backend & Model Data (Ignored ANYWHERE) ----
-
-Virtual Environments and Cache
-
-Use double-asterisk (**) for any depth
-
-**/.venv/
-**/pycache/ # Corrected: Added leading and trailing underscores
+############################################
+# RAG / Vector DB (Chroma)
+############################################
 **/.chroma/
+**/.chroma/**
+**/.chroma/**/*.sqlite3
+**/.chroma/**/*.db
 
-Large Model Data Files
+############################################
+# ONNX / Model Artifacts (NEVER COMMIT)
+############################################
+.onnx/
+*.onnx
+*.onnx_data
+*.bin
+*.h5
+*.model
 
-Corrected: Added leading asterisk (*) for file match
+############################################
+# HuggingFace / Transformers Cache
+############################################
+.cache/
+**/.cache/
+**/huggingface/
+**/torch/
+**/.hf_cache/
+**/hf_cache/
 
-**/.onnx
-**/.onnx_data
-**/.bin
-**/.h5
-**/*.model
+############################################
+# Project-specific generated data
+############################################
+chatbot-rag/backend/data/
 
----- OS / editor junk ----
+############################################
+# Local Models (CRITICAL — keep out of git)
+############################################
+chatbot-rag/backend/models/
+**/models/
 
+############################################
+# OS / Editor Junk
+############################################
 .DS_Store
 Thumbs.db
 *.swp
@@ -43,32 +77,7 @@ Thumbs.db
 .vscode/
 .idea/
 
----- Local Env / Secrets ----
-
-.env
-.env.*
-
-... (existing content above)
-
----- Python / Backend & Model Data (Ignored ANYWHERE) ----
-
-Virtual Environments and Cache
-
-Use double-asterisk (**) for any depth
-
-**/.venv/
-**/pycache/
-**/.chroma/
-
-🚨 NEW: Ignore Hugging Face/Model Cache Directory
-
-chatbot-rag/backend/data/
-**/data/
-
-Large Model Data Files
-
-Corrected: Added leading asterisk (*) for file match
-
-**/*.onnx
-
-... (existing content below)
+############################################
+# Logs
+############################################
+*.log

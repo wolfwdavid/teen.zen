@@ -1,192 +1,602 @@
 import os
+import shutil
 import logging
-from pathlib import Path
-from functools import lru_cache
+import time
+import warnings
+import re
+from dataclasses import dataclass
+from typing import Tuple, Optional, List, Dict, Any
 
-# --- External Libraries ---
-from langchain_community.vectorstores import Chroma
-from langchain_community.embeddings import HuggingFaceEmbeddings
-from langchain_community.llms import VLLM
-from langchain_core.prompts import PromptTemplate
-from langchain.chains import RetrievalQA
-from langchain_core.runnables import RunnableParallel, RunnablePassthrough, RunnableLambda
-from optimum.onnxruntime import ORTModelForCausalLM
-from transformers import AutoTokenizer, GenerationConfig
+# ------------------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------------------
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    force=True,
+)
+logger = logging.getLogger("RAG_CHAIN")
 
-# Disable ChromaDB telemetry errors
-os.environ["CHROMA_SERVER_NO_TELEMETRY"] = "true"
+print("\n" + "=" * 50, flush=True)
+print("🚀 CHAIN_V2 MODULE LOADED", flush=True)
+print("=" * 50 + "\n", flush=True)
 
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# ------------------------------------------------------------------------------
+# Third-party imports
+# ------------------------------------------------------------------------------
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_chroma import Chroma
+from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_core.documents import Document
+from langchain_core.retrievers import BaseRetriever
 
-# --- Configuration ---
+warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", message=".*TracerWarning.*")
+warnings.filterwarnings("ignore", message=".*torch_dtype.*")
 
-# 1. Path Fix: Use pathlib to resolve the model directory ABSOLUTELY.
-# This makes the LOCAL_ONNX_MODEL_DIR environment variable UNNECESSARY.
-BASE_DIR = Path(__file__).parent.resolve()
-LOCAL_ONNX_MODEL_PATH = BASE_DIR / "models" / "local-onnx-model"
-LOCAL_ONNX_MODEL_DIR = str(LOCAL_ONNX_MODEL_PATH)
+# BitNet native (optional)
+try:
+    from bitnet import BitNetInference  # type: ignore
+    BITNET_AVAILABLE = True
+except Exception:
+    BITNET_AVAILABLE = False
 
-# Fallback for LLM Providers (should be set in env, but defaults to CPU)
-ORT_PROVIDERS = os.environ.get("ORT_PROVIDERS", "CPUExecutionProvider").split(",")
+# HF / ORT
+from transformers import AutoTokenizer, AutoModelForCausalLM  # type: ignore
 
-# Fallback for Token Limits
-MAX_NEW_TOKENS = int(os.environ.get("MAX_NEW_TOKENS", 120))
+try:
+    import sentencepiece  # noqa: F401
+    from transformers import LlamaTokenizer  # type: ignore
+    SENTENCEPIECE_AVAILABLE = True
+except Exception:
+    LlamaTokenizer = None  # type: ignore
+    SENTENCEPIECE_AVAILABLE = False
 
+try:
+    from transformers import GPT2TokenizerFast  # type: ignore
+    GPT2_FAST_AVAILABLE = True
+except Exception:
+    GPT2TokenizerFast = None  # type: ignore
+    GPT2_FAST_AVAILABLE = False
 
-# --- Custom ONNX Model Class ---
+from optimum.onnxruntime import ORTModelForCausalLM  # type: ignore
 
-class OnnxChatModel:
-    """A wrapper for the ONNX Causal Language Model."""
+# ------------------------------------------------------------------------------
+# Config
+# ------------------------------------------------------------------------------
+RAG_PROMPT_TEMPLATE = """You are a retrieval QA assistant.
 
-    def __init__(self, model_dir: str, providers: list):
-        logger.info(f"Loading ONNX model from '{model_dir}' with providers={providers}")
-
-        # Note: from_pretrained loads model.onnx and model.onnx_data, etc.
-        # This will now use the guaranteed absolute path from LOCAL_ONNX_MODEL_DIR
-        self.model = ORTModelForCausalLM.from_pretrained(
-            model_dir,
-            provider=providers,
-            export=False, # Model is already exported
-        )
-        self.tokenizer = AutoTokenizer.from_pretrained(model_dir)
-        self.generation_config = GenerationConfig.from_pretrained(model_dir)
-        self.generation_config.max_new_tokens = MAX_NEW_TOKENS
-
-        # Set default provider (important for ORT)
-        if len(providers) > 0:
-            self.model.providers = providers
-
-
-    def generate(self, prompt: str) -> str:
-        """Generates text from a prompt."""
-        # The prompt is already the fully constructed RAG prompt (context + question)
-
-        # 1. Tokenize the input prompt
-        input_ids = self.tokenizer.encode(
-            prompt, 
-            return_tensors="pt", 
-            return_token_type_ids=False
-        )
-
-        # 2. Generate the response
-        generated_ids = self.model.generate(
-            input_ids, 
-            generation_config=self.generation_config
-        )
-
-        # 3. Decode the generated tokens
-        # Decode the output, skipping the prompt tokens and special tokens
-        generated_text = self.tokenizer.decode(
-            generated_ids[0, input_ids.shape[-1]:], 
-            skip_special_tokens=True
-        )
-
-        return generated_text
-
-
-# --- RAG Chain Construction ---
-
-# Cache the embeddings model, as it's large and slow to load
-@lru_cache(maxsize=1)
-def get_embeddings_model():
-    """Load the BAAI/bge-small-en-v1.5 embeddings model."""
-    logger.info(f"Using embeddings model 'BAAI/bge-small-en-v1.5' on device 'cpu'")
-    # We must explicitly use the CPU as the environment is not set up for GPU
-    embeddings = HuggingFaceEmbeddings(
-        model_name="BAAI/bge-small-en-v1.5",
-        model_kwargs={'device': 'cpu'},
-        # The ChromaDB index needs the normalize_embeddings=True setting
-        encode_kwargs={'normalize_embeddings': True}, 
-    )
-    return embeddings
-
-@lru_cache(maxsize=1)
-def get_vector_store():
-    """Load the Chroma vector store."""
-    embeddings = get_embeddings_model()
-    chroma_path = str(BASE_DIR / ".chroma")
-    collection_name = "rag-index"
-
-    logger.info(f"Loading existing Chroma DB from '{chroma_path}' (collection='{collection_name}') ...")
-    
-    # Load the existing database
-    # Note: Chroma uses the embeddings model to check for compatibility
-    return Chroma(
-        persist_directory=chroma_path,
-        embedding_function=embeddings,
-        collection_name=collection_name
-    )
-
-def format_docs(docs):
-    """Formats the documents for inclusion in the prompt."""
-    formatted_docs = []
-    # Include source file name (path) in the context
-    for i, doc in enumerate(docs):
-        source_path = doc.metadata.get('source', 'Unknown Source')
-        # Clean up the source path for display (e.g., just show docs/intro.txt)
-        cleaned_source = '/'.join(source_path.split(os.path.sep)[-2:])
-        
-        formatted_docs.append(
-            f"Context [{cleaned_source}]: {doc.page_content}"
-        )
-    return "\n\n".join(formatted_docs)
-
-# Template for the Prompt
-RAG_PROMPT_TEMPLATE = """
-You are a helpful and harmless assistant. Your task is to answer the question based
-ONLY on the provided context. If the answer is not found in the context, politely state 
-that the information is not available in the current knowledge base.
+RULES:
+- Use ONLY the Context.
+- If the Context does not contain the answer, say: "I don't know."
+- Keep the answer to 1-3 short sentences.
+- Do not ask the user questions.
 
 Context:
 {context}
 
 Question: {question}
+
 Answer:"""
-RAG_PROMPT = PromptTemplate.from_template(RAG_PROMPT_TEMPLATE)
+
+DOCS_DIR = os.getenv("DOCS_DIR", "./docs")
+CHROMA_DIR = os.getenv("CHROMA_DIR", "./.chroma")
+CHROMA_COLLECTION = os.getenv("CHROMA_COLLECTION", "rag-index")
+EMBED_MODEL = os.getenv("EMBED_MODEL", "BAAI/bge-small-en-v1.5")
+
+# Primary model (BitNet)
+BITNET_MODEL_PATH = os.getenv("BITNET_MODEL_PATH", "1bitLLM/bitnet_b1_58-large")
+
+# Export ONNX only when explicitly requested
+BITNET_ONNX_EXPORT = os.getenv("BITNET_ONNX_EXPORT", "0") == "1"
+
+# Local ONNX cache path
+ONNX_DIR = os.getenv("ONNX_DIR", "./.onnx")
+MODEL_SLUG = BITNET_MODEL_PATH.split("/")[-1].replace(":", "_")
+LOCAL_ONNX_PATH = os.path.join(ONNX_DIR, MODEL_SLUG)
+
+# Fallback model (distilgpt2 is NOT instruction tuned; consider TinyLlama)
+FALLBACK_MODEL_PATH = os.getenv("FALLBACK_MODEL_PATH", "distilgpt2")
+
+# ------------------------------------------------------------------------------
+# Generation tuning (IMPORTANT: deterministic by default for RAG)
+# ------------------------------------------------------------------------------
+GEN_MAX_NEW_TOKENS = int(os.getenv("GEN_MAX_NEW_TOKENS", "96"))
+
+# Default NO sampling (prevents rambling/drift)
+GEN_DO_SAMPLE = os.getenv("GEN_DO_SAMPLE", "0") == "1"
+
+# If not sampling, temperature/top_p must be neutral
+GEN_TEMPERATURE = float(os.getenv("GEN_TEMPERATURE", "0.0" if not GEN_DO_SAMPLE else "0.7"))
+GEN_TOP_P = float(os.getenv("GEN_TOP_P", "1.0" if not GEN_DO_SAMPLE else "0.9"))
+
+GEN_REP_PENALTY = float(os.getenv("GEN_REP_PENALTY", "1.10"))
+
+# ------------------------------------------------------------------------------
+# Global readiness state
+# ------------------------------------------------------------------------------
+@dataclass
+class ServiceState:
+    initialized: bool = False
+    model_loaded: bool = False
+    init_error: Optional[str] = None
+
+state = ServiceState()
+
+rag_chain: Optional["RAGBitNetChain"] = None
+retriever: Optional[BaseRetriever] = None
+
+# ------------------------------------------------------------------------------
+# Helpers
+# ------------------------------------------------------------------------------
+def _load_documents(docs_dir: str) -> List[Document]:
+    os.makedirs(docs_dir, exist_ok=True)
+    loaders = [
+        DirectoryLoader(docs_dir, glob="**/*.txt", loader_cls=TextLoader),
+        DirectoryLoader(docs_dir, glob="**/*.md", loader_cls=TextLoader),
+    ]
+    splitter = RecursiveCharacterTextSplitter(chunk_size=800, chunk_overlap=80)
+
+    all_docs: List[Document] = []
+    for ld in loaders:
+        try:
+            docs = ld.load()
+            all_docs.extend(splitter.split_documents(docs))
+        except Exception as e:
+            logger.warning("⚠️ Document loader failed: %s", e)
+
+    if not all_docs:
+        return [Document(page_content="", metadata={"source": "system"})]
+    return all_docs
 
 
-def build_rag_chain():
-    """Builds and returns the complete RAG chain and the retriever."""
-    logger.info("Building chain + retriever...")
-    
-    # 1. Initialize the Retriever (the search engine for the context)
-    vectorstore = get_vector_store()
-    # Use a high k for more context, but this can be tuned
-    retriever = vectorstore.as_retriever(search_kwargs={"k": 5})
-
-    # 2. Initialize the LLM (the model that generates the final answer)
-    # The model directory is now guaranteed to be absolute and correct
-    llm = OnnxChatModel(model_dir=LOCAL_ONNX_MODEL_DIR, providers=ORT_PROVIDERS)
-    
-    # Helper to invoke the LLM
-    def llm_invoke(prompt):
-        return llm.generate(prompt)
-
-    # 3. Assemble the RAG Chain using LangChain Expression Language (LCEL)
-    rag_chain = (
-        # A. Search for context documents based on the user question
-        RunnableParallel(
-            # Run the retriever in parallel with the user question (passthrough)
-            context=retriever | format_docs, 
-            question=RunnablePassthrough(),
-            source_docs=retriever # Save docs for citation
+def _build_vectorstore(embeddings: HuggingFaceEmbeddings) -> Chroma:
+    if os.path.isdir(CHROMA_DIR) and any(os.scandir(CHROMA_DIR)):
+        logger.info("📚 [Chroma] Loading persisted index at: %s", CHROMA_DIR)
+        return Chroma(
+            persist_directory=CHROMA_DIR,
+            collection_name=CHROMA_COLLECTION,
+            embedding_function=embeddings,
         )
-        # B. Plug context and question into the prompt template
-        | RAG_PROMPT
-        # C. Pass the final prompt to the LLM for generation
-        | RunnableLambda(llm_invoke)
+
+    logger.info("📚 [Chroma] Building new index from docs at: %s", DOCS_DIR)
+    docs = _load_documents(DOCS_DIR)
+    vs = Chroma.from_documents(
+        docs,
+        embeddings,
+        persist_directory=CHROMA_DIR,
+        collection_name=CHROMA_COLLECTION,
     )
-
-    logger.info("RAG Chain initialization complete.")
-    return rag_chain, retriever
-
-if __name__ == '__main__':
-    # Simple test run (will fail without Uvicorn context, but useful for quick debug)
-    print("Testing chain initialization...")
     try:
-        rag_chain, _ = build_rag_chain()
-        print("Chain built successfully.")
+        vs.persist()
+    except Exception:
+        pass
+    return vs
+
+
+def _local_onnx_present(path: str) -> bool:
+    if not os.path.isdir(path):
+        return False
+    try:
+        for fn in os.listdir(path):
+            if fn.endswith(".onnx") or fn == "model.onnx":
+                return True
+    except Exception:
+        return False
+    return False
+
+
+def _looks_like_gibberish(text: str) -> bool:
+    t = (text or "").strip()
+    if len(t) < 12:
+        return True
+    if "�" in t:
+        return True
+
+    non_ascii = sum(1 for c in t if ord(c) > 127)
+    if non_ascii / max(1, len(t)) > 0.08:
+        return True
+
+    punct = sum(1 for c in t if c in ".,;:!?()[]{}<>_/\\|@#$%^&*+=~`")
+    if punct / max(1, len(t)) > 0.25:
+        return True
+
+    letters = sum(1 for c in t if c.isalpha())
+    if letters / max(1, len(t)) < 0.50:
+        return True
+
+    vowels = sum(1 for c in t.lower() if c in "aeiou")
+    if vowels / max(1, letters) < 0.22:
+        return True
+
+    tokens = t.split()
+    if len(tokens) >= 8:
+        short = sum(1 for w in tokens if len(w.strip(".,;:!?()[]{}")) <= 2)
+        if short / len(tokens) > 0.35:
+            return True
+        abbr = len(re.findall(r"\b\w{1,4}\.\b", t))
+        if abbr >= 4:
+            return True
+        uniq = len(set(tokens))
+        if uniq / len(tokens) < 0.55:
+            return True
+
+    return False
+
+
+def _finalize_answer(text: str) -> str:
+    t = (text or "").strip()
+
+    if "Answer:" in t:
+        t = t.split("Answer:", 1)[-1].strip()
+
+    if "\n" in t:
+        t = t.split("\n", 1)[0].strip()
+
+    for bad in ["RULES:", "Context:", "Question:"]:
+        if bad in t:
+            t = t.split(bad, 1)[0].strip()
+
+    t = t.strip(" \t\r\n\"'")
+    return t or "I don't know."
+
+
+# ------------------------------------------------------------------------------
+# NEW: Relevance gating (prevents intro.txt from answering everything)
+# ------------------------------------------------------------------------------
+_STOPWORDS = {
+    "the","a","an","and","or","but","if","then","else","so","to","of","in","on","for","with","as",
+    "is","are","was","were","be","been","being","it","this","that","these","those","i","you","we",
+    "they","he","she","them","us","our","your","my","me","do","does","did","what","which","who",
+    "whom","when","where","why","how","can","could","would","should","will","just","only","from"
+}
+
+def _tokenize_content_words(s: str) -> List[str]:
+    toks = re.findall(r"[a-z0-9]+", (s or "").lower())
+    out: List[str] = []
+    for t in toks:
+        if t in _STOPWORDS:
+            continue
+        # drop tiny tokens; keep 2+ chars (avoid v/k/z/p)
+        if len(t) <= 1:
+            continue
+        out.append(t)
+    return out
+
+def _context_is_relevant(question: str, context: str) -> bool:
+    """
+    True if enough lexical overlap between question and context.
+    If false, treat as "no context" -> "I don't know."
+    """
+    q = set(_tokenize_content_words(question))
+    c = set(_tokenize_content_words(context))
+
+    if not q or not c:
+        return False
+
+    overlap = len(q & c)
+    if overlap >= 1:
+        return True
+
+    # very small jaccard backup
+    jacc = len(q & c) / max(1, len(q | c))
+    return jacc >= 0.05
+
+
+# ------------------------------------------------------------------------------
+# Model wrapper
+# ------------------------------------------------------------------------------
+class DualChatModel:
+    def __init__(self, bitnet_path: str, fallback_path: str):
+        self.bitnet = BitNetChatModel(bitnet_path)
+        self.fallback = HFChatModel(fallback_path)
+
+        if self.bitnet.model is not None:
+            logger.info("✅ [LLM] BitNet primary model loaded.")
+        else:
+            logger.warning("⚠️ [LLM] BitNet primary failed: %s", self.bitnet.last_error)
+
+        if self.fallback.model is not None:
+            logger.info("✅ [LLM] Fallback model loaded: %s", fallback_path)
+        else:
+            logger.error("❌ [LLM] Fallback model failed to load. %s", self.fallback.last_error)
+
+    @property
+    def model(self):
+        return self.fallback.model or self.bitnet.model
+
+    def generate(self, prompt: str) -> str:
+        if self.bitnet.model is not None:
+            out = self.bitnet.generate(prompt)
+            out2 = _finalize_answer(out)
+
+            if out2.startswith("Error:"):
+                logger.warning("⚠️ [LLM] BitNet errored; using fallback. err=%s", out2)
+            elif _looks_like_gibberish(out2):
+                logger.warning("⚠️ [LLM] BitNet gibberish; using fallback. sample=%r", out2[:120])
+            else:
+                logger.info("✅ [LLM] Answered with BitNet.")
+                return out2
+
+        fb = self.fallback.generate(prompt)
+        fb2 = _finalize_answer(fb)
+        logger.info("✅ [LLM] Answered with FALLBACK. model=%s", FALLBACK_MODEL_PATH)
+        return fb2
+
+    def stream(self, prompt: str):
+        text = self.generate(prompt)
+        if text.startswith("Error:"):
+            yield text
+            return
+        for w in text.split():
+            yield w + " "
+            time.sleep(0.01)
+
+
+class HFChatModel:
+    def __init__(self, model_path: str):
+        self.model = None
+        self.tokenizer = None
+        self.last_error: Optional[str] = None
+
+        try:
+            logger.info("📦 [Fallback] Loading HF model: %s", model_path)
+            self.tokenizer = AutoTokenizer.from_pretrained(model_path, use_fast=True)
+            if getattr(self.tokenizer, "pad_token", None) is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+            self.model = AutoModelForCausalLM.from_pretrained(model_path)
+            logger.info("✅ [Fallback] HF model ready.")
+        except Exception as e:
+            self.last_error = str(e)
+            logger.critical("❌ [Fallback] Failed to load HF fallback model.", exc_info=True)
+            self.model = None
+            self.tokenizer = None
+
+    def generate(self, prompt: str) -> str:
+        if self.model is None or self.tokenizer is None:
+            return f"Error: Fallback model not loaded. {self.last_error or ''}".strip()
+
+        inputs = self.tokenizer(prompt, return_tensors="pt")
+        gen_ids = self.model.generate(
+            **inputs,
+            max_new_tokens=GEN_MAX_NEW_TOKENS,
+            do_sample=GEN_DO_SAMPLE,
+            temperature=GEN_TEMPERATURE,
+            top_p=GEN_TOP_P,
+            repetition_penalty=GEN_REP_PENALTY,
+            eos_token_id=self.tokenizer.eos_token_id,
+            pad_token_id=self.tokenizer.eos_token_id,
+        )
+        input_len = inputs["input_ids"].shape[-1]
+        new_tokens = gen_ids[0][input_len:]
+        return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+
+
+class BitNetChatModel:
+    def __init__(self, model_path: str):
+        self.model = None
+        self.tokenizer = None
+        self.is_bitnet_native = False
+        self.last_error: Optional[str] = None
+
+        if BITNET_AVAILABLE:
+            try:
+                logger.info("🚀 [BitNet] Attempting Native Load: %s", model_path)
+                self.model = BitNetInference(model_path)
+                self.is_bitnet_native = True
+                logger.info("✅ [BitNet] Native Loaded Successfully.")
+                return
+            except Exception as e:
+                self.last_error = str(e)
+                logger.warning("⚠️ [BitNet] Native load failed. Falling back. Error: %s", e)
+
+        try:
+            logger.info("📦 [BitNet] Initializing ORT fallback for %s...", model_path)
+
+            os.makedirs(LOCAL_ONNX_PATH, exist_ok=True)
+            has_onnx = _local_onnx_present(LOCAL_ONNX_PATH)
+            logger.info("🧠 [ONNX] local_path=%s present=%s export=%s", LOCAL_ONNX_PATH, has_onnx, BITNET_ONNX_EXPORT)
+
+            if not has_onnx:
+                if not BITNET_ONNX_EXPORT:
+                    raise RuntimeError(
+                        f"No local ONNX files found at '{LOCAL_ONNX_PATH}'. "
+                        f"Run ONCE with BITNET_ONNX_EXPORT=1 to export & save the ONNX model."
+                    )
+                logger.warning("⚙️ [ONNX] Exporting model to local cache: %s (one-time)", LOCAL_ONNX_PATH)
+                model = ORTModelForCausalLM.from_pretrained(model_path, export=True, trust_remote_code=True)
+                model.save_pretrained(LOCAL_ONNX_PATH)
+                self.model = model
+                logger.info("✅ [ONNX] Export complete and saved.")
+            else:
+                self.model = ORTModelForCausalLM.from_pretrained(LOCAL_ONNX_PATH, export=False, trust_remote_code=True)
+
+            self.tokenizer = self._load_tokenizer_prefer_local(model_path, LOCAL_ONNX_PATH)
+            if self.tokenizer is None:
+                raise RuntimeError("Tokenizer could not be loaded for BitNet ORT model.")
+
+            if getattr(self.tokenizer, "pad_token", None) is None:
+                self.tokenizer.pad_token = self.tokenizer.eos_token
+
+            logger.info("✅ [BitNet] ORT model ready.")
+        except Exception as e:
+            self.last_error = str(e)
+            logger.critical("❌ [BitNet] CRITICAL: All model loading paths failed.", exc_info=True)
+            self.model = None
+            self.tokenizer = None
+            self.is_bitnet_native = False
+
+    def _load_tokenizer_prefer_local(self, remote_path: str, local_path: str):
+        try:
+            tok = AutoTokenizer.from_pretrained(local_path, trust_remote_code=True)
+            logger.info("✅ [Tokenizer] Loaded from LOCAL_ONNX_PATH.")
+            return tok
+        except Exception:
+            pass
+
+        try:
+            tok = AutoTokenizer.from_pretrained(remote_path, trust_remote_code=True)
+            logger.info("✅ [Tokenizer] Loaded via AutoTokenizer (trust_remote_code=True).")
+            return tok
+        except Exception as e:
+            logger.warning("⚠️ [Tokenizer] AutoTokenizer(trust_remote_code=True) failed: %s", e)
+
+        try:
+            tok = AutoTokenizer.from_pretrained(remote_path, trust_remote_code=False)
+            logger.info("✅ [Tokenizer] Loaded via AutoTokenizer (trust_remote_code=False).")
+            return tok
+        except Exception as e:
+            logger.warning("⚠️ [Tokenizer] AutoTokenizer(trust_remote_code=False) failed: %s", e)
+
+        if GPT2_FAST_AVAILABLE:
+            try:
+                tok = GPT2TokenizerFast.from_pretrained(remote_path)
+                logger.info("✅ [Tokenizer] Loaded via GPT2TokenizerFast.")
+                return tok
+            except Exception as e:
+                logger.warning("⚠️ [Tokenizer] GPT2TokenizerFast failed: %s", e)
+
+        if SENTENCEPIECE_AVAILABLE and LlamaTokenizer is not None:
+            try:
+                tok = LlamaTokenizer.from_pretrained(remote_path)
+                logger.info("✅ [Tokenizer] Loaded via LlamaTokenizer.")
+                return tok
+            except Exception as e:
+                logger.warning("⚠️ [Tokenizer] LlamaTokenizer failed: %s", e)
+
+        return None
+
+    def generate(self, prompt: str) -> str:
+        if not self.model or not self.tokenizer:
+            return f"Error: Model not loaded. {self.last_error or ''}".strip()
+
+        try:
+            if self.is_bitnet_native:
+                return self.model.generate(prompt, max_new_tokens=GEN_MAX_NEW_TOKENS).strip()
+
+            inputs = self.tokenizer(prompt, return_tensors="pt")
+            gen_ids = self.model.generate(
+                **inputs,
+                max_new_tokens=GEN_MAX_NEW_TOKENS,
+                do_sample=GEN_DO_SAMPLE,
+                temperature=GEN_TEMPERATURE,
+                top_p=GEN_TOP_P,
+                repetition_penalty=GEN_REP_PENALTY,
+            )
+            input_len = inputs["input_ids"].shape[-1]
+            new_tokens = gen_ids[0][input_len:]
+            return self.tokenizer.decode(new_tokens, skip_special_tokens=True).strip()
+        except Exception as e:
+            logger.error("Generation error", exc_info=True)
+            return f"Error: Generation failed. {e}"
+
+
+# ------------------------------------------------------------------------------
+# RAG Chain
+# ------------------------------------------------------------------------------
+class RAGBitNetChain:
+    def __init__(self, retriever_obj: BaseRetriever, llm: DualChatModel):
+        self.retriever = retriever_obj
+        self.llm = llm
+
+    def invoke(self, question: str) -> str:
+        docs = self.retriever.invoke(question)
+        context = "\n".join([d.page_content for d in docs]) if docs else ""
+
+        # ✅ Hard guard: empty or irrelevant context -> no hallucinations
+        if (not context.strip()) or (not _context_is_relevant(question, context)):
+            return "I don't know."
+
+        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+        return self.llm.generate(prompt)
+
+    def stream(self, question: str):
+        docs = self.retriever.invoke(question)
+        context = "\n".join([d.page_content for d in docs]) if docs else ""
+
+        if (not context.strip()) or (not _context_is_relevant(question, context)):
+            yield "I don't know."
+            return
+
+        prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
+        yield from self.llm.stream(prompt)
+
+
+def get_sources(question: str, retriever_obj: BaseRetriever) -> List[Dict[str, Any]]:
+    docs = retriever_obj.invoke(question)
+    context = "\n".join([d.page_content for d in docs]) if docs else ""
+
+    # ✅ Do not show sources if retrieval isn't relevant
+    if (not context.strip()) or (not _context_is_relevant(question, context)):
+        return []
+
+    return [
+        {"id": i + 1, "source": d.metadata.get("source", "unknown"), "preview": d.page_content[:160]}
+        for i, d in enumerate(docs)
+    ]
+
+
+def build_rag_chain() -> Tuple[RAGBitNetChain, BaseRetriever]:
+    logger.info("🛠️ [RAG] Building components (Embeddings + VectorStore + Retriever + LLM)...")
+    embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
+    vectorstore = _build_vectorstore(embeddings)
+    retriever_obj = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+    llm = DualChatModel(bitnet_path=BITNET_MODEL_PATH, fallback_path=FALLBACK_MODEL_PATH)
+    return RAGBitNetChain(retriever_obj, llm), retriever_obj
+
+
+def reindex_all() -> Tuple[RAGBitNetChain, BaseRetriever]:
+    if os.path.exists(CHROMA_DIR):
+        shutil.rmtree(CHROMA_DIR)
+    return build_rag_chain()
+
+
+def smoke_test_generation() -> Optional[str]:
+    if rag_chain is None or rag_chain.llm is None or rag_chain.llm.model is None:
+        return "smoke_test: model object is missing"
+    out = rag_chain.llm.generate(RAG_PROMPT_TEMPLATE.format(context="Hello world", question="What is this?"))
+    if out.startswith("Error:"):
+        return f"smoke_test: {out}"
+    return None
+
+
+def initialize_global_vars(force: bool = False) -> ServiceState:
+    global rag_chain, retriever
+
+    if state.initialized and not force:
+        logger.info("ℹ️ [System] RAG already initialized; skipping.")
+        return state
+
+    state.initialized = False
+    state.model_loaded = False
+    state.init_error = None
+
+    try:
+        logger.info("🌟 [System] Starting Global RAG Initialization...")
+        rag_chain, retriever = build_rag_chain()
+
+        state.initialized = True
+        state.model_loaded = bool(rag_chain and rag_chain.llm and rag_chain.llm.model)
+
+        if not state.model_loaded:
+            state.init_error = "No usable LLM model loaded (BitNet + fallback failed)."
+            logger.error("⚠️ [System] %s", state.init_error)
+            return state
+
+        err = smoke_test_generation()
+        if err is None:
+            state.init_error = None
+            logger.info("✅ [System] Smoke test passed. Model ready.")
+        else:
+            state.init_error = err
+            logger.warning("⚠️ [System] Smoke test warning: %s", err)
+
     except Exception as e:
-        print(f"Failed to build chain: {e}")
+        state.initialized = True
+        state.model_loaded = False
+        state.init_error = str(e)
+        logger.critical("💥 [System] Global initialization failed.", exc_info=True)
+
+    return state

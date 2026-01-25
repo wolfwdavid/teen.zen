@@ -1,151 +1,127 @@
-import os
 import logging
 import time
-from typing import Dict, Any, Generator # <-- Generator added here
+import json
+import asyncio
+import threading
+from urllib.parse import unquote
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sse_starlette.sse import EventSourceResponse
-from langchain_core.runnables import RunnableConfig
+from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
-# Import only the necessary components from chain_v2
-from chain_v2 import (
-    build_rag_chain,
-    get_vector_store
-    # Removed: reindex_all, which is no longer defined
-)
+import chain_v2  # ✅ import the module, not variables
 
-# Setup logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("api_v2")
 
-# --- Initialization ---
+app = FastAPI(title="RAG Chatbot – V2 (BitNet 1.58b)")
 
-# Initialize the FastAPI application
-app = FastAPI(title="Chatbot RAG API V2")
-
-# Configure CORS
-origins = [
-    "http://localhost",
-    "http://localhost:5173",  # Assuming your React/Vite app runs here
-    "http://127.0.0.0:5173",
-]
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
+    allow_origins=["*"],
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Global variables to hold the RAG chain and retriever instance
-rag_chain = None
-retriever = None
+class ChatRequest(BaseModel):
+    question: str
 
-# --- Startup/Shutdown Events ---
 
 @app.on_event("startup")
-async def on_startup():
-    """Initializes the RAG chain and model on application startup."""
-    global rag_chain, retriever
-    logger.info("🔧 Startup (V2): initializing RAG + ONNX...")
-    try:
-        # Load the RAG chain and vector store
-        rag_chain, retriever = build_rag_chain()
-        logger.info("✅ Startup (V2): RAG chain and model loaded successfully.")
-    except Exception as e:
-        # NOTE: This block is triggered by the ONNX/DML error you saw
-        logger.error(f"❌ Failed to initialize RAG V2: {e}", exc_info=True)
-        # Set chain to None to indicate failure, so the chat endpoint can report it.
-        rag_chain = None
+def on_startup():
+    logger.info("🔧 Startup (V2): initializing RAG + model...")
+    st = chain_v2.initialize_global_vars(force=False)
+    logger.info("Startup state: %s", st)
 
-@app.on_event("shutdown")
-async def on_shutdown():
-    """Perform cleanup tasks on shutdown (optional, but good practice)."""
-    logger.info("🧹 Shutdown (V2): Cleaning up resources...")
-    pass
-
-# --- Health Check ---
 
 @app.get("/health")
-async def health_check():
-    """Simple health check endpoint."""
-    return {"status": "ok", "chain_loaded": rag_chain is not None}
-
-# --- Chat Endpoint (SSE Streaming) ---
-
-# CRITICAL FIX: The function must be a synchronous generator (def) and yield directly.
-def stream_rag_response(question: str) -> Generator[Dict[str, Any], None, None]:
-    """Generator function for streaming the RAG chain response."""
-    global rag_chain, retriever
-
-    if rag_chain is None:
-        # This will be triggered if the startup failed
-        yield {
-            "type": "error",
-            "message": "RAG model is not initialized or failed to load. Check server logs."
-        }
-        yield {"type": "end"}
-        return
-
-    # 1. Start timer
-    start_time = time.time()
-    
-    # 2. Get the context (source documents)
-    try:
-        # Use a simplified search to get context before generation starts
-        docs = retriever.invoke(question)
-        context_sources = [{"source": doc.metadata.get('source', 'Unknown'), 
-                            "page": doc.metadata.get('page', 'Unknown')} for doc in docs]
-    except Exception as e:
-        logger.error(f"Error retrieving context: {e}", exc_info=True)
-        context_sources = []
-
-
-    # 3. Yield the context/metadata package
-    yield {
-        "type": "context",
-        "sources": context_sources,
-        "latency": 0.0 # Will be updated in the 'end' event
+def health():
+    return {
+        "ok": True,
+        "initialized": chain_v2.state.initialized,
+        "model_loaded": chain_v2.state.model_loaded,
+        "init_error": chain_v2.state.init_error,
+        # extra debugging so you can see the mismatch if it ever happens again:
+        "rag_chain_is_none": chain_v2.rag_chain is None,
+        "retriever_is_none": chain_v2.retriever is None,
     }
 
-    # 4. Iterate through the LLM output (the generation phase)
-    full_response = ""
-    try:
-        # The rag_chain.invoke is a blocking call, which is fine for a synchronous generator
-        response = rag_chain.invoke(question)
-        full_response = response.strip()
-        
-        # Simulate streaming by sending the whole response as one chunk
-        yield {
-            "type": "stream",
-            "chunk": full_response
-        }
 
-    except Exception as e:
-        error_message = f"An error occurred during generation: {e}"
-        logger.error(error_message, exc_info=True)
-        yield {
-            "type": "error",
-            "message": error_message
-        }
-    
-    # 5. End event with timing
-    end_time = time.time()
-    yield {
-        "type": "end",
-        "latency": round(end_time - start_time, 2),
-        "full_response": full_response,
-        "sources": context_sources
-    }
+def _require_ready():
+    if (not chain_v2.state.model_loaded) or (chain_v2.rag_chain is None) or (chain_v2.retriever is None):
+        raise HTTPException(
+            status_code=503,
+            detail={
+                "error": "Model not loaded",
+                "initialized": chain_v2.state.initialized,
+                "model_loaded": chain_v2.state.model_loaded,
+                "init_error": chain_v2.state.init_error,
+                "rag_chain_is_none": chain_v2.rag_chain is None,
+                "retriever_is_none": chain_v2.retriever is None,
+            },
+        )
+
+
+def _sse(data: str) -> str:
+    return f"data: {data}\n\n"
+
+
+@app.post("/chat")
+async def chat(req: ChatRequest):
+    _require_ready()
+    question = (req.question or "").strip()
+
+    srcs = chain_v2.get_sources(question, chain_v2.retriever)
+    answer = chain_v2.rag_chain.invoke(question)
+    return {"answer": answer, "sources": srcs}
 
 
 @app.get("/chat/stream")
 async def chat_stream(q: str):
-    """
-    Endpoint for streaming RAG responses using Server-Sent Events (SSE).
-    :param q: The user's question.
-    """
-    logger.info(f"Received stream request: {q}")
-    # EventSourceResponse expects an iterable (which stream_rag_response now is).
-    return EventSourceResponse(stream_rag_response(q))
+    _require_ready()
+
+    question = unquote(q or "").strip()
+    if not question:
+        raise HTTPException(status_code=400, detail="Missing query parameter 'q'")
+
+    srcs = chain_v2.get_sources(question, chain_v2.retriever)
+
+    async def event_gen():
+        start_time = time.time()
+        yield _sse(json.dumps({"type": "sources", "items": srcs}))
+
+        loop = asyncio.get_running_loop()
+        queue: asyncio.Queue[str | None] = asyncio.Queue()
+
+        def producer():
+            try:
+                for chunk in chain_v2.rag_chain.stream(question):
+                    asyncio.run_coroutine_threadsafe(queue.put(chunk), loop)
+            except Exception as e:
+                logger.exception("Stream producer error: %s", e)
+                asyncio.run_coroutine_threadsafe(queue.put(f"[error] {e}"), loop)
+            finally:
+                asyncio.run_coroutine_threadsafe(queue.put(None), loop)
+
+        threading.Thread(target=producer, daemon=True).start()
+
+        while True:
+            item = await queue.get()
+            if item is None:
+                break
+            yield _sse(json.dumps({"type": "token", "text": item}))
+
+        elapsed = time.time() - start_time
+        yield _sse(json.dumps({"type": "perf_time", "data": f"{elapsed:.2f}"}))
+        yield _sse(json.dumps({"type": "done"}))
+
+    return StreamingResponse(
+        event_gen(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )

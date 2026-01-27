@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { askChatbot, chatStreamUrl, healthCheck } from "../api/chat"; // ✅ use helpers from chat.ts
+import { askChatbot, chatStreamUrl, healthCheck } from "../api/chat";
 
 type SourceItem = {
   id: number;
@@ -17,7 +17,7 @@ type ChatReply = {
 };
 
 type StreamEvent =
-  | { type: "sources"; items: SourceItem[] }
+  | { type: "sources"; items: SourceItem[]; debug?: any }
   | { type: "token"; text: string }
   | { type: "perf_time"; data: string }
   | { type: "done" }
@@ -28,28 +28,47 @@ type BackendState = {
   detail?: string;
 };
 
+function isCapacitorRuntime() {
+  // Capacitor injects window.Capacitor in native builds
+  return typeof window !== "undefined" && !!(window as any).Capacitor;
+}
+
+function isAndroidUA() {
+  if (typeof navigator === "undefined") return false;
+  return /Android/i.test(navigator.userAgent);
+}
+
 export default function ChatBox() {
+  const isMobileWebView = isCapacitorRuntime() || isAndroidUA();
+
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [perfTime, setPerfTime] = useState<string | null>(null);
-  const [useStreaming, setUseStreaming] = useState(true);
 
-  // Optional tuning controls (easy to remove)
+  // ✅ Force streaming OFF for Capacitor/Android WebView (most reliable)
+  const [useStreaming, setUseStreaming] = useState(false);
+
+  // Optional tuning controls
   const [k, setK] = useState(3);
   const [debug, setDebug] = useState(false);
 
-  // ✅ Backend health badge
   const [backend, setBackend] = useState<BackendState>({ status: "checking" });
 
   const abortRef = useRef<AbortController | null>(null);
+  const esRef = useRef<EventSource | null>(null);
 
   const canAsk = useMemo(() => {
     const hasText = !!question.trim();
     const backendOk = backend.status === "up";
     return hasText && !loading && backendOk;
   }, [question, loading, backend.status]);
+
+  // ✅ On mount: enforce streaming off if mobile webview
+  useEffect(() => {
+    if (isMobileWebView) setUseStreaming(false);
+  }, [isMobileWebView]);
 
   // ✅ /health ping on startup (+ interval refresh)
   useEffect(() => {
@@ -86,6 +105,14 @@ export default function ChatBox() {
   function stop() {
     abortRef.current?.abort();
     abortRef.current = null;
+
+    if (esRef.current) {
+      try {
+        esRef.current.close();
+      } catch {}
+      esRef.current = null;
+    }
+
     setLoading(false);
   }
 
@@ -99,28 +126,32 @@ export default function ChatBox() {
     setPerfTime(null);
 
     // Cancel any previous request
-    abortRef.current?.abort();
+    stop();
+
     const controller = new AbortController();
     abortRef.current = controller;
 
     try {
-      // 1) Try SSE first (if enabled)
-      if (useStreaming) {
+      // ✅ Never use SSE in Capacitor/Android WebView
+      const shouldStream = useStreaming && !isMobileWebView;
+
+      if (shouldStream) {
         const ok = await tryStream(q, controller.signal);
         if (ok) return;
-        // if SSE hard-failed before starting, we fall through to POST
       }
 
-      // 2) Fallback to normal POST
-      const data: ChatReply = await askChatbot(q, { k, signal: controller.signal, timeoutMs: 60000 });
+      // ✅ POST (reliable)
+      const data: ChatReply = await askChatbot(q, {
+        k,
+        signal: controller.signal,
+        timeoutMs: 60000,
+      });
+
       setAnswer(data.answer || "");
       setSources(Array.isArray(data.sources) ? data.sources : []);
     } catch (err: any) {
-      if (err?.name === "AbortError") {
-        setAnswer("(stopped)");
-      } else {
-        setAnswer("Error: " + (err?.message ?? String(err)));
-      }
+      if (err?.name === "AbortError") setAnswer("(stopped)");
+      else setAnswer("Error: " + (err?.message ?? String(err)));
     } finally {
       setLoading(false);
       abortRef.current = null;
@@ -128,109 +159,85 @@ export default function ChatBox() {
   }
 
   async function tryStream(q: string, signal: AbortSignal): Promise<boolean> {
-    // ✅ Use your helper, with heartbeat to keep Android/proxies alive
+    // safety: never stream on mobile webview
+    if (isMobileWebView) return false;
+
+    if (esRef.current) {
+      try {
+        esRef.current.close();
+      } catch {}
+      esRef.current = null;
+    }
+
     const url = chatStreamUrl(q, { k, debug: debug ? 1 : 0, heartbeat: 2 });
 
-    let res: Response;
-    try {
-      res = await fetch(url, {
-        method: "GET",
-        headers: {
-          Accept: "text/event-stream",
-          "Cache-Control": "no-cache",
-        },
-        signal,
-      });
-    } catch {
-      // Network-level failure: let caller fall back to POST
-      return false;
-    }
+    return await new Promise<boolean>((resolve) => {
+      let gotAnyToken = false;
+      let settled = false;
 
-    // If server isn't reachable, fall back to POST
-    if (!res.ok || !res.body) return false;
+      const settle = (val: boolean) => {
+        if (settled) return;
+        settled = true;
+        resolve(val);
+      };
 
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let buffer = "";
+      try {
+        const es = new EventSource(url);
+        esRef.current = es;
 
-    // IMPORTANT: local flag (don’t rely on React state inside long loops)
-    let gotAnyToken = false;
+        const onAbort = () => {
+          try {
+            es.close();
+          } catch {}
+          esRef.current = null;
+          settle(true);
+        };
+        signal.addEventListener("abort", onAbort, { once: true });
 
-    const handleEvent = (evt: StreamEvent) => {
-      if (evt.type === "sources") {
-        setSources(Array.isArray(evt.items) ? evt.items : []);
-      } else if (evt.type === "token") {
-        gotAnyToken = true;
-        setAnswer((prev) => prev + (evt.text ?? ""));
-      } else if (evt.type === "perf_time") {
-        setPerfTime(evt.data ?? null);
-      } else if (evt.type === "error") {
-        setAnswer("Error: " + (evt.error ?? "unknown error"));
-      }
-    };
-
-    try {
-      while (true) {
-        const { value, done } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-
-        // SSE frames separated by blank line
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() ?? "";
-
-        for (const frame of frames) {
-          // Ignore heartbeats/comments like ":" frames
-          if (frame.startsWith(":")) continue;
-
-          // SSE can contain multiple data: lines; join them.
-          const dataLines = frame
-            .split("\n")
-            .filter((l) => l.startsWith("data:"))
-            .map((l) => l.replace(/^data:\s*/, ""));
-
-          if (!dataLines.length) continue;
-
-          const payload = dataLines.join("\n").trim();
-          if (!payload) continue;
-
+        es.onmessage = (ev) => {
           let evt: StreamEvent | null = null;
           try {
-            evt = JSON.parse(payload);
+            evt = JSON.parse(ev.data);
           } catch {
-            continue;
+            return;
           }
-          if (!evt) continue;
+          if (!evt) return;
 
-          if (evt.type === "done") {
-            return true;
+          if (evt.type === "sources") {
+            setSources(Array.isArray(evt.items) ? evt.items : []);
+          } else if (evt.type === "token") {
+            gotAnyToken = true;
+            setAnswer((prev) => prev + (evt.text ?? ""));
+          } else if (evt.type === "perf_time") {
+            setPerfTime(evt.data ?? null);
+          } else if (evt.type === "error") {
+            setAnswer("Error: " + (evt.error ?? "unknown error"));
+          } else if (evt.type === "done") {
+            try {
+              es.close();
+            } catch {}
+            esRef.current = null;
+            settle(true);
           }
+        };
 
-          handleEvent(evt);
-        }
+        es.onerror = () => {
+          try {
+            es.close();
+          } catch {}
+          esRef.current = null;
+
+          if (gotAnyToken) {
+            setAnswer((prev) => prev + "\n\n(⚠️ stream interrupted)");
+            settle(true);
+          } else {
+            settle(false);
+          }
+        };
+      } catch {
+        settle(false);
       }
-
-      // Stream ended without done:
-      // - If we got tokens, treat as success.
-      // - If we got nothing, return false so caller falls back to POST.
-      return gotAnyToken;
-    } catch (err: any) {
-      if (err?.name === "AbortError") return true; // user hit Stop
-
-      // If it drops mid-stream on Android:
-      // - If we already have tokens, keep what we have (success-ish).
-      // - If not, fall back to POST.
-      if (gotAnyToken) {
-        setAnswer((prev) => prev + "\n\n(⚠️ stream interrupted)");
-        return true;
-      }
-      return false;
-    } finally {
-      try {
-        await reader.cancel();
-      } catch {}
-    }
+    });
   }
 
   const backendBadgeText =
@@ -246,7 +253,6 @@ export default function ChatBox() {
   return (
     <div className="chat-box" style={{ maxWidth: 700, margin: "40px auto", padding: 16 }}>
       <div style={{ display: "flex", gap: 12, alignItems: "center", marginBottom: 8, flexWrap: "wrap" }}>
-        {/* ✅ Backend badge */}
         <div
           style={{
             padding: "4px 10px",
@@ -260,15 +266,20 @@ export default function ChatBox() {
           {backendBadgeText}
         </div>
 
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input
-            type="checkbox"
-            checked={useStreaming}
-            onChange={(e) => setUseStreaming(e.target.checked)}
-            disabled={loading}
-          />
-          Streaming
-        </label>
+        {/* ✅ Hide/lock streaming toggle on mobile webview */}
+        {!isMobileWebView ? (
+          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
+            <input
+              type="checkbox"
+              checked={useStreaming}
+              onChange={(e) => setUseStreaming(e.target.checked)}
+              disabled={loading}
+            />
+            Streaming
+          </label>
+        ) : (
+          <div style={{ fontSize: 12, opacity: 0.8 }}>Streaming disabled on Android (uses POST)</div>
+        )}
 
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
           k:
@@ -311,7 +322,7 @@ export default function ChatBox() {
       />
 
       <button onClick={handleAsk} disabled={!canAsk} style={{ marginTop: 8 }}>
-        {loading ? "Thinking..." : useStreaming ? "Ask (SSE Typing)" : "Ask"}
+        {loading ? "Thinking..." : "Ask"}
       </button>
 
       {perfTime && <div style={{ marginTop: 8, opacity: 0.7, fontSize: 12 }}>Took {perfTime}s</div>}
@@ -325,7 +336,6 @@ export default function ChatBox() {
       {sources.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
-
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {sources.map((s, i) => {
               const rank = s.rank ?? i + 1;

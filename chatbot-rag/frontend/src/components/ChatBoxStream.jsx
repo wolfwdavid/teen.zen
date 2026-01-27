@@ -1,5 +1,12 @@
 // src/components/ChatBoxStream.jsx
 import { useEffect, useRef, useState } from "react";
+import { API_BASE } from "../api/apiBase"; // ✅ use your real base URL
+
+function joinUrl(base, path) {
+  const b = String(base || "").trim().replace(/\/+$/, "");
+  const p = String(path || "").replace(/^\/+/, "");
+  return `${b}/${p}`;
+}
 
 export default function ChatBoxStream() {
   const [q, setQ] = useState("");
@@ -10,31 +17,45 @@ export default function ChatBoxStream() {
   const esRef = useRef(null);
   const outRef = useRef(null);
 
-  // autoscroll as text grows
   useEffect(() => {
     if (outRef.current) outRef.current.scrollTop = outRef.current.scrollHeight;
   }, [answer]);
 
+  const stop = () => {
+    setStreaming(false);
+    if (esRef.current) {
+      try {
+        esRef.current.close();
+      } catch {}
+      esRef.current = null;
+    }
+  };
+
   const start = () => {
     if (!q.trim() || streaming) return;
 
-    // reset UI
     setAnswer("");
     setSources([]);
     setErr("");
     setStreaming(true);
 
-    // open SSE
-    const url = `/chat/stream?q=${encodeURIComponent(q.trim())}`;
-    const es = new EventSource(url, { withCredentials: false });
+    // ✅ ABSOLUTE URL (required for Android/Capacitor)
+    const url = joinUrl(API_BASE, "/chat/stream") + `?q=${encodeURIComponent(q.trim())}&k=3&heartbeat=2`;
+
+    let es;
+    try {
+      es = new EventSource(url);
+    } catch (e) {
+      setErr(`Failed to create EventSource. API_BASE=${API_BASE}`);
+      setStreaming(false);
+      return;
+    }
+
     esRef.current = es;
 
     es.onmessage = (evt) => {
-      // evt.data is a JSON string from the backend
       try {
         const msg = JSON.parse(evt.data);
-
-        if (msg.type === "status") return;
 
         if (msg.type === "sources") {
           setSources(Array.isArray(msg.items) ? msg.items : []);
@@ -42,13 +63,12 @@ export default function ChatBoxStream() {
         }
 
         if (msg.type === "token") {
-          // append the token
-          setAnswer((prev) => prev + msg.text);
+          setAnswer((prev) => prev + (msg.text || ""));
           return;
         }
 
         if (msg.type === "error") {
-          setErr(msg.message || "Streaming error");
+          setErr(msg.error || msg.message || "Streaming error");
           stop();
           return;
         }
@@ -57,30 +77,29 @@ export default function ChatBoxStream() {
           stop();
           return;
         }
-      } catch (e) {
-        // non-JSON lines are ignored
+      } catch {
+        // ignore non-JSON lines
       }
     };
 
     es.onerror = () => {
-      setErr("Connection lost (SSE onerror).");
+      setErr(
+        `Connection lost (SSE). Check emulator reachability:\n` +
+          `1) Open ${joinUrl(API_BASE, "/health")} in emulator Chrome\n` +
+          `2) Ensure backend runs with --host 0.0.0.0\n` +
+          `API_BASE=${API_BASE}`
+      );
       stop();
     };
   };
 
-  const stop = () => {
-    setStreaming(false);
-    if (esRef.current) {
-      esRef.current.close();
-      esRef.current = null;
-    }
-  };
-
   return (
     <div style={{ maxWidth: 900, margin: "24px auto", padding: 16 }}>
-      <h1 style={{ color: "#fff", margin: "0 0 12px" }}>
-        RAG Chat (Streaming + Typing)
-      </h1>
+      <h1 style={{ color: "#fff", margin: "0 0 12px" }}>RAG Chat (Streaming)</h1>
+
+      <div style={{ color: "#cbd5e1", fontSize: 12, marginBottom: 8 }}>
+        API: <span style={{ color: "#93c5fd" }}>{API_BASE}</span>
+      </div>
 
       <textarea
         value={q}
@@ -110,8 +129,9 @@ export default function ChatBoxStream() {
             cursor: streaming ? "not-allowed" : "pointer",
           }}
         >
-          {streaming ? "Streaming…" : "Ask (SSE Typing)"}
+          {streaming ? "Streaming…" : "Ask (Streaming)"}
         </button>
+
         <button
           onClick={stop}
           disabled={!streaming}
@@ -127,7 +147,6 @@ export default function ChatBoxStream() {
         </button>
       </div>
 
-      {/* OUTPUT */}
       <div
         ref={outRef}
         style={{
@@ -147,54 +166,28 @@ export default function ChatBoxStream() {
         {answer || (!streaming && <span style={{ opacity: 0.5 }}>No answer yet.</span>)}
       </div>
 
-      {/* SOURCES */}
       {sources.length > 0 && (
         <div style={{ marginTop: 10, display: "flex", gap: 8, flexWrap: "wrap" }}>
-          {sources.map((s, i) => {
-            const label = `[${i + 1}] ${s.source || "source"}`;
-            const title = s.preview || s.metadata?.source || "";
-            const href =
-              s.href ||
-              (s.source && s.source.startsWith("docs/") ? `/${s.source.replace(/^\//, "")}` : null);
-            return href ? (
-              <a
-                key={i}
-                href={href}
-                target="_blank"
-                rel="noreferrer"
-                title={title}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  background: "#0b1b3a",
-                  border: "1px solid #1f3b7a",
-                  color: "#a3c4ff",
-                  textDecoration: "none",
-                }}
-              >
-                {label}
-              </a>
-            ) : (
-              <span
-                key={i}
-                title={title}
-                style={{
-                  padding: "6px 10px",
-                  borderRadius: 8,
-                  background: "#0b1b3a",
-                  border: "1px solid #1f3b7a",
-                  color: "#a3c4ff",
-                }}
-              >
-                {label}
-              </span>
-            );
-          })}
+          {sources.map((s, i) => (
+            <span
+              key={i}
+              title={s.preview || ""}
+              style={{
+                padding: "6px 10px",
+                borderRadius: 8,
+                background: "#0b1b3a",
+                border: "1px solid #1f3b7a",
+                color: "#a3c4ff",
+              }}
+            >
+              [{s.rank ?? i + 1}] {s.source || "source"}
+            </span>
+          ))}
         </div>
       )}
 
       {err && (
-        <div style={{ marginTop: 10, color: "#ff7b7b" }}>
+        <div style={{ marginTop: 10, color: "#ff7b7b", whiteSpace: "pre-wrap" }}>
           <strong>Error:</strong> {err}
         </div>
       )}

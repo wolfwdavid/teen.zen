@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDarkMode } from "../hooks/useDarkMode/useDarkMode";
 
+
 type Role = "user" | "assistant";
 type Source = { id: number; source: string; href?: string; preview?: string };
 type Message = { id: string; role: Role; text: string; sources?: Source[] };

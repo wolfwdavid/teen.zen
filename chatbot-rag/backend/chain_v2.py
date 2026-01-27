@@ -96,22 +96,28 @@ ONNX_DIR = os.getenv("ONNX_DIR", "./.onnx")
 MODEL_SLUG = BITNET_MODEL_PATH.split("/")[-1].replace(":", "_")
 LOCAL_ONNX_PATH = os.path.join(ONNX_DIR, MODEL_SLUG)
 
-# Fallback model (distilgpt2 is NOT instruction tuned; consider TinyLlama)
+# Fallback model
 FALLBACK_MODEL_PATH = os.getenv("FALLBACK_MODEL_PATH", "distilgpt2")
 
 # ------------------------------------------------------------------------------
-# Generation tuning (IMPORTANT: deterministic by default for RAG)
+# Generation tuning (deterministic by default for RAG)
 # ------------------------------------------------------------------------------
 GEN_MAX_NEW_TOKENS = int(os.getenv("GEN_MAX_NEW_TOKENS", "96"))
-
-# Default NO sampling (prevents rambling/drift)
 GEN_DO_SAMPLE = os.getenv("GEN_DO_SAMPLE", "0") == "1"
-
-# If not sampling, temperature/top_p must be neutral
 GEN_TEMPERATURE = float(os.getenv("GEN_TEMPERATURE", "0.0" if not GEN_DO_SAMPLE else "0.7"))
 GEN_TOP_P = float(os.getenv("GEN_TOP_P", "1.0" if not GEN_DO_SAMPLE else "0.9"))
-
 GEN_REP_PENALTY = float(os.getenv("GEN_REP_PENALTY", "1.10"))
+
+# ------------------------------------------------------------------------------
+# Retrieval scoring + gating
+# ------------------------------------------------------------------------------
+RETRIEVAL_K_DEFAULT = int(os.getenv("RETRIEVAL_K", "3"))
+
+# If we have normalized relevance scores (0..1, higher better)
+MIN_RELEVANCE_SCORE = float(os.getenv("MIN_RELEVANCE_SCORE", "0.20"))
+
+# If we only have "distance" scores (lower better)
+MAX_DISTANCE_SCORE = float(os.getenv("MAX_DISTANCE_SCORE", "1.25"))
 
 # ------------------------------------------------------------------------------
 # Global readiness state
@@ -122,15 +128,32 @@ class ServiceState:
     model_loaded: bool = False
     init_error: Optional[str] = None
 
+
 state = ServiceState()
 
 rag_chain: Optional["RAGBitNetChain"] = None
 retriever: Optional[BaseRetriever] = None
 
+# keep vectorstore around so we can fetch scores
+vectorstore: Optional[Chroma] = None
+
+# ------------------------------------------------------------------------------
+# Debug prints (helps confirm correct file/dirs are being used)
+# ------------------------------------------------------------------------------
+try:
+    print("CHAIN_V2 PATH =", os.path.abspath(__file__), flush=True)
+except Exception:
+    pass
+print("DOCS_DIR =", os.path.abspath(DOCS_DIR), flush=True)
+print("CHROMA_DIR =", os.path.abspath(CHROMA_DIR), flush=True)
+
 # ------------------------------------------------------------------------------
 # Helpers
 # ------------------------------------------------------------------------------
 def _load_documents(docs_dir: str) -> List[Document]:
+    """
+    Load docs from DOCS_DIR. If none exist, return [] (do NOT create a fake doc).
+    """
     os.makedirs(docs_dir, exist_ok=True)
     loaders = [
         DirectoryLoader(docs_dir, glob="**/*.txt", loader_cls=TextLoader),
@@ -147,11 +170,14 @@ def _load_documents(docs_dir: str) -> List[Document]:
             logger.warning("⚠️ Document loader failed: %s", e)
 
     if not all_docs:
-        return [Document(page_content="", metadata={"source": "system"})]
+        logger.warning("⚠️ No documents found in DOCS_DIR=%s (txt/md). RAG will answer 'I don't know.'", docs_dir)
+        return []
+
     return all_docs
 
 
 def _build_vectorstore(embeddings: HuggingFaceEmbeddings) -> Chroma:
+    # Load persisted if it exists
     if os.path.isdir(CHROMA_DIR) and any(os.scandir(CHROMA_DIR)):
         logger.info("📚 [Chroma] Loading persisted index at: %s", CHROMA_DIR)
         return Chroma(
@@ -160,8 +186,24 @@ def _build_vectorstore(embeddings: HuggingFaceEmbeddings) -> Chroma:
             embedding_function=embeddings,
         )
 
+    # Build new
     logger.info("📚 [Chroma] Building new index from docs at: %s", DOCS_DIR)
     docs = _load_documents(DOCS_DIR)
+
+    # If no docs, create an empty collection (clean behavior)
+    if not docs:
+        logger.warning("⚠️ [Chroma] No docs to index. Creating empty collection.")
+        vs = Chroma(
+            persist_directory=CHROMA_DIR,
+            collection_name=CHROMA_COLLECTION,
+            embedding_function=embeddings,
+        )
+        try:
+            vs.persist()
+        except Exception:
+            pass
+        return vs
+
     vs = Chroma.from_documents(
         docs,
         embeddings,
@@ -243,45 +285,77 @@ def _finalize_answer(text: str) -> str:
 
 
 # ------------------------------------------------------------------------------
-# NEW: Relevance gating (prevents intro.txt from answering everything)
+# Scored retrieval (visibility + gating)
 # ------------------------------------------------------------------------------
-_STOPWORDS = {
-    "the","a","an","and","or","but","if","then","else","so","to","of","in","on","for","with","as",
-    "is","are","was","were","be","been","being","it","this","that","these","those","i","you","we",
-    "they","he","she","them","us","our","your","my","me","do","does","did","what","which","who",
-    "whom","when","where","why","how","can","could","would","should","will","just","only","from"
-}
-
-def _tokenize_content_words(s: str) -> List[str]:
-    toks = re.findall(r"[a-z0-9]+", (s or "").lower())
-    out: List[str] = []
-    for t in toks:
-        if t in _STOPWORDS:
-            continue
-        # drop tiny tokens; keep 2+ chars (avoid v/k/z/p)
-        if len(t) <= 1:
-            continue
-        out.append(t)
-    return out
-
-def _context_is_relevant(question: str, context: str) -> bool:
+def retrieve_with_scores(question: str, k: int = RETRIEVAL_K_DEFAULT) -> Dict[str, Any]:
     """
-    True if enough lexical overlap between question and context.
-    If false, treat as "no context" -> "I don't know."
+    Returns:
+      {
+        "docs": [Document...],
+        "score_type": "relevance" | "distance" | "none",
+        "scores": [float...]  # aligned with docs
+      }
     """
-    q = set(_tokenize_content_words(question))
-    c = set(_tokenize_content_words(context))
+    if vectorstore is None:
+        return {"docs": [], "score_type": "none", "scores": []}
 
-    if not q or not c:
+    # Prefer normalized relevance scores (0..1, higher better)
+    if hasattr(vectorstore, "similarity_search_with_relevance_scores"):
+        try:
+            pairs = vectorstore.similarity_search_with_relevance_scores(question, k=k)
+            docs = [d for d, _ in pairs]
+            scores = [float(s) for _, s in pairs]
+            return {"docs": docs, "score_type": "relevance", "scores": scores}
+        except Exception as e:
+            logger.warning("⚠️ [Retrieval] relevance_scores failed; falling back. err=%s", e)
+
+    # Fallback: distance-like scores (lower better)
+    if hasattr(vectorstore, "similarity_search_with_score"):
+        try:
+            pairs = vectorstore.similarity_search_with_score(question, k=k)
+            docs = [d for d, _ in pairs]
+            scores = [float(s) for _, s in pairs]
+            return {"docs": docs, "score_type": "distance", "scores": scores}
+        except Exception as e:
+            logger.warning("⚠️ [Retrieval] with_score failed. err=%s", e)
+
+    # Last fallback: docs only (no scores)
+    try:
+        docs = vectorstore.similarity_search(question, k=k)  # type: ignore
+        return {"docs": docs, "score_type": "none", "scores": [None] * len(docs)}
+    except Exception:
+        return {"docs": [], "score_type": "none", "scores": []}
+
+
+def retrieval_is_relevant(score_type: str, scores: List[Any], docs: Optional[List[Document]] = None) -> bool:
+    """
+    Decide if retrieval is good enough to answer.
+    Conservative defaults: if we can't score, require real non-trivial content.
+    """
+    docs = docs or []
+    if not docs:
         return False
 
-    overlap = len(q & c)
-    if overlap >= 1:
-        return True
+    # If we don't have real scores, require some non-trivial context
+    if score_type == "none" or not scores:
+        joined = "\n".join([d.page_content.strip() for d in docs if d.page_content])
+        return len(joined.strip()) >= 40  # small but non-empty threshold
 
-    # very small jaccard backup
-    jacc = len(q & c) / max(1, len(q | c))
-    return jacc >= 0.05
+    if score_type == "relevance":
+        try:
+            top = float(scores[0])
+            return top >= MIN_RELEVANCE_SCORE
+        except Exception:
+            return False
+
+    if score_type == "distance":
+        try:
+            top = float(scores[0])
+            return top <= MAX_DISTANCE_SCORE
+        except Exception:
+            return False
+
+    return False
 
 
 # ------------------------------------------------------------------------------
@@ -501,21 +575,28 @@ class RAGBitNetChain:
         self.llm = llm
 
     def invoke(self, question: str) -> str:
-        docs = self.retriever.invoke(question)
+        pack = retrieve_with_scores(question, k=RETRIEVAL_K_DEFAULT)
+        docs = pack["docs"]
+        score_type = pack["score_type"]
+        scores = pack["scores"]
+
         context = "\n".join([d.page_content for d in docs]) if docs else ""
 
-        # ✅ Hard guard: empty or irrelevant context -> no hallucinations
-        if (not context.strip()) or (not _context_is_relevant(question, context)):
+        if (not context.strip()) or (not retrieval_is_relevant(score_type, scores, docs=docs)):
             return "I don't know."
 
         prompt = RAG_PROMPT_TEMPLATE.format(context=context, question=question)
         return self.llm.generate(prompt)
 
     def stream(self, question: str):
-        docs = self.retriever.invoke(question)
+        pack = retrieve_with_scores(question, k=RETRIEVAL_K_DEFAULT)
+        docs = pack["docs"]
+        score_type = pack["score_type"]
+        scores = pack["scores"]
+
         context = "\n".join([d.page_content for d in docs]) if docs else ""
 
-        if (not context.strip()) or (not _context_is_relevant(question, context)):
+        if (not context.strip()) or (not retrieval_is_relevant(score_type, scores, docs=docs)):
             yield "I don't know."
             return
 
@@ -523,25 +604,42 @@ class RAGBitNetChain:
         yield from self.llm.stream(prompt)
 
 
-def get_sources(question: str, retriever_obj: BaseRetriever) -> List[Dict[str, Any]]:
-    docs = retriever_obj.invoke(question)
-    context = "\n".join([d.page_content for d in docs]) if docs else ""
+def get_sources(question: str, k: int = RETRIEVAL_K_DEFAULT) -> List[Dict[str, Any]]:
+    """
+    Includes: score, score_type, rank
+    """
+    pack = retrieve_with_scores(question, k=k)
+    docs = pack["docs"]
+    score_type = pack["score_type"]
+    scores = pack["scores"]
 
-    # ✅ Do not show sources if retrieval isn't relevant
-    if (not context.strip()) or (not _context_is_relevant(question, context)):
+    if (not docs) or (not retrieval_is_relevant(score_type, scores, docs=docs)):
         return []
 
-    return [
-        {"id": i + 1, "source": d.metadata.get("source", "unknown"), "preview": d.page_content[:160]}
-        for i, d in enumerate(docs)
-    ]
+    items: List[Dict[str, Any]] = []
+    for i, d in enumerate(docs):
+        s = scores[i] if i < len(scores) else None
+        items.append(
+            {
+                "id": i + 1,
+                "rank": i + 1,
+                "source": d.metadata.get("source", "unknown"),
+                "preview": (d.page_content or "")[:160],
+                "score_type": score_type,
+                "score": None if s is None else float(s),
+            }
+        )
+    return items
 
 
 def build_rag_chain() -> Tuple[RAGBitNetChain, BaseRetriever]:
+    global vectorstore
     logger.info("🛠️ [RAG] Building components (Embeddings + VectorStore + Retriever + LLM)...")
+
     embeddings = HuggingFaceEmbeddings(model_name=EMBED_MODEL)
     vectorstore = _build_vectorstore(embeddings)
-    retriever_obj = vectorstore.as_retriever(search_kwargs={"k": 3})
+
+    retriever_obj = vectorstore.as_retriever(search_kwargs={"k": RETRIEVAL_K_DEFAULT})
 
     llm = DualChatModel(bitnet_path=BITNET_MODEL_PATH, fallback_path=FALLBACK_MODEL_PATH)
     return RAGBitNetChain(retriever_obj, llm), retriever_obj

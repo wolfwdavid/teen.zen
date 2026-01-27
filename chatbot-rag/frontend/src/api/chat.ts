@@ -20,10 +20,10 @@ export type ChatReply = {
 
 // --- URL helpers ---
 function normalizeBase(base: string) {
-  // Defend against trailing spaces and missing protocol
+  // Defend against trailing spaces
   const b = (base || "").trim().replace(/\/+$/, "");
 
-  // ✅ IMPORTANT: URL() requires an absolute URL
+  // ✅ URL() requires an absolute URL
   if (!/^https?:\/\//i.test(b)) {
     throw new Error(
       `API_BASE must be an absolute URL starting with http:// or https:// (got: "${base}")`
@@ -92,7 +92,6 @@ export async function askChatbot(
 
   try {
     const body: Record<string, unknown> = { question };
-    // ✅ use explicit undefined check (more correct than truthy check)
     if (opts?.k !== undefined) body.k = opts.k;
 
     const res = await fetch(url, {
@@ -146,7 +145,10 @@ export type HealthReply = {
   init_error?: string | null;
 };
 
-export async function healthCheck(opts?: { signal?: AbortSignal; timeoutMs?: number }): Promise<HealthReply> {
+export async function healthCheck(opts?: {
+  signal?: AbortSignal;
+  timeoutMs?: number;
+}): Promise<HealthReply> {
   const url = buildUrl(API_BASE, "/health");
   const { signal, cleanup } = withTimeout(opts?.signal, opts?.timeoutMs ?? 8000);
 
@@ -159,7 +161,9 @@ export async function healthCheck(opts?: { signal?: AbortSignal; timeoutMs?: num
 
     if (!res.ok) {
       const text = await safeText(res);
-      throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`);
+      throw new Error(
+        `HTTP ${res.status} ${res.statusText}${text ? ` — ${text}` : ""}`
+      );
     }
 
     return (await res.json()) as HealthReply;

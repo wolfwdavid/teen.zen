@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { askChatbot, chatStreamUrl, healthCheck } from "../api/chat";
+import { askChatbot, healthCheck } from "../api/chat";
 
 type SourceItem = {
   id: number;
@@ -16,48 +16,28 @@ type ChatReply = {
   sources: SourceItem[];
 };
 
-type StreamEvent =
-  | { type: "sources"; items: SourceItem[]; debug?: any }
-  | { type: "token"; text: string }
-  | { type: "perf_time"; data: string }
-  | { type: "done" }
-  | { type: "error"; error: string };
-
 type BackendState = {
   status: "checking" | "up" | "down";
   detail?: string;
 };
 
-function isCapacitorRuntime() {
-  // Capacitor injects window.Capacitor in native builds
-  return typeof window !== "undefined" && !!(window as any).Capacitor;
-}
-
-function isAndroidUA() {
-  if (typeof navigator === "undefined") return false;
-  return /Android/i.test(navigator.userAgent);
-}
-
 export default function ChatBox() {
-  const isMobileWebView = isCapacitorRuntime() || isAndroidUA();
-
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [sources, setSources] = useState<SourceItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [perfTime, setPerfTime] = useState<string | null>(null);
 
-  // ✅ Force streaming OFF for Capacitor/Android WebView (most reliable)
-  const [useStreaming, setUseStreaming] = useState(false);
-
   // Optional tuning controls
   const [k, setK] = useState(3);
   const [debug, setDebug] = useState(false);
 
+  // Backend badge
   const [backend, setBackend] = useState<BackendState>({ status: "checking" });
 
+  // Abort POST + typing loop
   const abortRef = useRef<AbortController | null>(null);
-  const esRef = useRef<EventSource | null>(null);
+  const typingTimerRef = useRef<number | null>(null);
 
   const canAsk = useMemo(() => {
     const hasText = !!question.trim();
@@ -65,12 +45,7 @@ export default function ChatBox() {
     return hasText && !loading && backendOk;
   }, [question, loading, backend.status]);
 
-  // ✅ On mount: enforce streaming off if mobile webview
-  useEffect(() => {
-    if (isMobileWebView) setUseStreaming(false);
-  }, [isMobileWebView]);
-
-  // ✅ /health ping on startup (+ interval refresh)
+  // /health ping on startup (+ interval)
   useEffect(() => {
     const controller = new AbortController();
 
@@ -94,7 +69,7 @@ export default function ChatBox() {
     }
 
     ping();
-    const t = setInterval(ping, 10000);
+    const t = window.setInterval(ping, 10000);
 
     return () => {
       clearInterval(t);
@@ -106,14 +81,35 @@ export default function ChatBox() {
     abortRef.current?.abort();
     abortRef.current = null;
 
-    if (esRef.current) {
-      try {
-        esRef.current.close();
-      } catch {}
-      esRef.current = null;
+    if (typingTimerRef.current) {
+      window.clearTimeout(typingTimerRef.current);
+      typingTimerRef.current = null;
     }
 
     setLoading(false);
+  }
+
+  function typewriter(fullText: string, signal: AbortSignal, cps = 80) {
+    // cps = chars per second
+    const delay = Math.max(5, Math.floor(1000 / cps));
+    let i = 0;
+
+    setAnswer("");
+
+    const tick = () => {
+      if (signal.aborted) return;
+
+      i = Math.min(fullText.length, i + 1);
+      setAnswer(fullText.slice(0, i));
+
+      if (i < fullText.length) {
+        typingTimerRef.current = window.setTimeout(tick, delay);
+      } else {
+        typingTimerRef.current = null;
+      }
+    };
+
+    tick();
   }
 
   async function handleAsk() {
@@ -125,119 +121,33 @@ export default function ChatBox() {
     setSources([]);
     setPerfTime(null);
 
-    // Cancel any previous request
-    stop();
+    stop(); // cancel anything in flight
 
     const controller = new AbortController();
     abortRef.current = controller;
 
+    const t0 = performance.now();
+
     try {
-      // ✅ Never use SSE in Capacitor/Android WebView
-      const shouldStream = useStreaming && !isMobileWebView;
+      const data: ChatReply = await askChatbot(q, { k, signal: controller.signal, timeoutMs: 120000 });
 
-      if (shouldStream) {
-        const ok = await tryStream(q, controller.signal);
-        if (ok) return;
-      }
+      const t1 = performance.now();
+      setPerfTime(((t1 - t0) / 1000).toFixed(2));
 
-      // ✅ POST (reliable)
-      const data: ChatReply = await askChatbot(q, {
-        k,
-        signal: controller.signal,
-        timeoutMs: 60000,
-      });
-
-      setAnswer(data.answer || "");
       setSources(Array.isArray(data.sources) ? data.sources : []);
+
+      // ✅ simulate typing
+      typewriter(data.answer || "", controller.signal, 90);
     } catch (err: any) {
-      if (err?.name === "AbortError") setAnswer("(stopped)");
-      else setAnswer("Error: " + (err?.message ?? String(err)));
+      if (err?.name === "AbortError") {
+        setAnswer("(stopped)");
+      } else {
+        setAnswer("Error: " + (err?.message ?? String(err)));
+      }
     } finally {
       setLoading(false);
       abortRef.current = null;
     }
-  }
-
-  async function tryStream(q: string, signal: AbortSignal): Promise<boolean> {
-    // safety: never stream on mobile webview
-    if (isMobileWebView) return false;
-
-    if (esRef.current) {
-      try {
-        esRef.current.close();
-      } catch {}
-      esRef.current = null;
-    }
-
-    const url = chatStreamUrl(q, { k, debug: debug ? 1 : 0, heartbeat: 2 });
-
-    return await new Promise<boolean>((resolve) => {
-      let gotAnyToken = false;
-      let settled = false;
-
-      const settle = (val: boolean) => {
-        if (settled) return;
-        settled = true;
-        resolve(val);
-      };
-
-      try {
-        const es = new EventSource(url);
-        esRef.current = es;
-
-        const onAbort = () => {
-          try {
-            es.close();
-          } catch {}
-          esRef.current = null;
-          settle(true);
-        };
-        signal.addEventListener("abort", onAbort, { once: true });
-
-        es.onmessage = (ev) => {
-          let evt: StreamEvent | null = null;
-          try {
-            evt = JSON.parse(ev.data);
-          } catch {
-            return;
-          }
-          if (!evt) return;
-
-          if (evt.type === "sources") {
-            setSources(Array.isArray(evt.items) ? evt.items : []);
-          } else if (evt.type === "token") {
-            gotAnyToken = true;
-            setAnswer((prev) => prev + (evt.text ?? ""));
-          } else if (evt.type === "perf_time") {
-            setPerfTime(evt.data ?? null);
-          } else if (evt.type === "error") {
-            setAnswer("Error: " + (evt.error ?? "unknown error"));
-          } else if (evt.type === "done") {
-            try {
-              es.close();
-            } catch {}
-            esRef.current = null;
-            settle(true);
-          }
-        };
-
-        es.onerror = () => {
-          try {
-            es.close();
-          } catch {}
-          esRef.current = null;
-
-          if (gotAnyToken) {
-            setAnswer((prev) => prev + "\n\n(⚠️ stream interrupted)");
-            settle(true);
-          } else {
-            settle(false);
-          }
-        };
-      } catch {
-        settle(false);
-      }
-    });
   }
 
   const backendBadgeText =
@@ -266,21 +176,6 @@ export default function ChatBox() {
           {backendBadgeText}
         </div>
 
-        {/* ✅ Hide/lock streaming toggle on mobile webview */}
-        {!isMobileWebView ? (
-          <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-            <input
-              type="checkbox"
-              checked={useStreaming}
-              onChange={(e) => setUseStreaming(e.target.checked)}
-              disabled={loading}
-            />
-            Streaming
-          </label>
-        ) : (
-          <div style={{ fontSize: 12, opacity: 0.8 }}>Streaming disabled on Android (uses POST)</div>
-        )}
-
         <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
           k:
           <input
@@ -294,9 +189,9 @@ export default function ChatBox() {
           />
         </label>
 
-        <label style={{ display: "flex", gap: 8, alignItems: "center" }}>
-          <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} disabled={loading} />
-          Debug
+        <label style={{ display: "flex", gap: 8, alignItems: "center", opacity: 0.7 }}>
+          <input type="checkbox" checked={debug} onChange={(e) => setDebug(e.target.checked)} disabled />
+          debug
         </label>
 
         {loading ? (
@@ -321,21 +216,39 @@ export default function ChatBox() {
         disabled={backend.status !== "up" || loading}
       />
 
-      <button onClick={handleAsk} disabled={!canAsk} style={{ marginTop: 8 }}>
-        {loading ? "Thinking..." : "Ask"}
-      </button>
+      <div style={{ marginTop: 8, display: "flex", gap: 8 }}>
+        <button onClick={handleAsk} disabled={!canAsk}>
+          {loading ? "Thinking..." : "Ask"}
+        </button>
+        <button onClick={stop} disabled={!loading}>
+          Stop
+        </button>
+      </div>
 
       {perfTime && <div style={{ marginTop: 8, opacity: 0.7, fontSize: 12 }}>Took {perfTime}s</div>}
 
-      {answer && (
-        <div style={{ marginTop: 12, whiteSpace: "pre-wrap", lineHeight: 1.5 }}>
-          <strong>Answer:</strong> {answer}
-        </div>
-      )}
+      <div
+        style={{
+          marginTop: 16,
+          minHeight: 160,
+          maxHeight: 380,
+          overflowY: "auto",
+          background: "#050b1a",
+          color: "#dbe8ff",
+          padding: 16,
+          borderRadius: 10,
+          border: "1px solid #1f2a44",
+          whiteSpace: "pre-wrap",
+          lineHeight: 1.5,
+        }}
+      >
+        {answer || (!loading && <span style={{ opacity: 0.5 }}>No answer yet.</span>)}
+      </div>
 
       {sources.length > 0 && (
         <div style={{ marginTop: 12 }}>
           <div style={{ fontWeight: 600, marginBottom: 6 }}>Sources</div>
+
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             {sources.map((s, i) => {
               const rank = s.rank ?? i + 1;
@@ -344,8 +257,9 @@ export default function ChatBox() {
 
               const label = `[${rank}] ${s.source || "source"}`;
 
-              const chip = (
+              return (
                 <div
+                  key={i}
                   title={s.preview || ""}
                   style={{
                     padding: "6px 10px",
@@ -373,14 +287,6 @@ export default function ChatBox() {
                     </span>
                   ) : null}
                 </div>
-              );
-
-              return s.href ? (
-                <a key={i} href={s.href} target="_blank" rel="noreferrer" style={{ textDecoration: "none" }}>
-                  {chip}
-                </a>
-              ) : (
-                <div key={i}>{chip}</div>
               );
             })}
           </div>

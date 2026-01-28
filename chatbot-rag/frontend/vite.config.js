@@ -6,13 +6,9 @@ export default defineConfig({
   plugins: [react()],
   resolve: { alias: { "@": path.resolve(__dirname, "./src") } },
   server: {
+    host: true,          // ✅ IMPORTANT (exposes dev server to emulator)
     port: 5173,
+    strictPort: true,
     open: true,
-    proxy: {
-      "/health":      { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/chat":        { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/chat/stream": { target: "http://127.0.0.1:8000", changeOrigin: true },
-      "/reindex":     { target: "http://127.0.0.1:8000", changeOrigin: true },
-    },
   },
 });

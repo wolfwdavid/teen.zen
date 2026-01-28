@@ -1,7 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Check, X, Clock } from "lucide-react";
-import { API_BASE } from "./api/apiBase"; // ✅ adjust path if needed
+import { API_BASE } from "./api/apiBase";
 
+<span className="opacity-70">
+  Native: {String(window?.Capacitor?.isNativePlatform?.() ?? false)}
+</span>
 // ------------------------
 // Small URL helper
 // ------------------------
@@ -16,12 +19,20 @@ function joinUrl(base, path) {
 // ------------------------
 const ChatMessage = ({ type, text, sources = [], timing, error }) => {
   const isUser = type === "user";
-  const bgColor = isUser ? "bg-indigo-600 text-white" : "bg-gray-700 text-gray-100";
-  const alignment = isUser ? "self-end items-end" : "self-start items-start";
+  const bgColor = isUser
+    ? "bg-indigo-600 text-white"
+    : "bg-gray-700 text-gray-100";
+  const alignment = isUser
+    ? "self-end items-end"
+    : "self-start items-start";
 
   return (
-    <div className={`max-w-[90%] md:max-w-[75%] p-4 rounded-xl shadow-lg mb-4 flex flex-col ${bgColor} ${alignment}`}>
-      <p className="font-semibold mb-1 text-sm">{isUser ? "You" : "RAG Chatbot"}:</p>
+    <div
+      className={`max-w-[90%] md:max-w-[75%] p-4 rounded-xl shadow-lg mb-4 flex flex-col ${bgColor} ${alignment}`}
+    >
+      <p className="font-semibold mb-1 text-sm">
+        {isUser ? "You" : "RAG Chatbot"}:
+      </p>
 
       {error ? (
         <div className="text-red-300 font-medium">
@@ -34,7 +45,10 @@ const ChatMessage = ({ type, text, sources = [], timing, error }) => {
       {!!timing && (
         <div className="mt-3 pt-2 border-t border-gray-600 text-xs text-gray-400 flex items-center">
           <Clock className="w-3 h-3 mr-1 text-yellow-300" />
-          Response Time: <span className="font-bold text-yellow-300 ml-1">{timing} seconds</span>
+          Response Time:{" "}
+          <span className="font-bold text-yellow-300 ml-1">
+            {timing} seconds
+          </span>
         </div>
       )}
 
@@ -50,13 +64,20 @@ const ChatMessage = ({ type, text, sources = [], timing, error }) => {
               <span key={index} className="block italic leading-tight">
                 [{index + 1}]{" "}
                 {href ? (
-                  <a href={href} target="_blank" rel="noopener noreferrer" className="hover:underline text-indigo-300">
+                  <a
+                    href={href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="hover:underline text-indigo-300"
+                  >
                     {label}
                   </a>
                 ) : (
                   <span className="text-indigo-200">{label}</span>
                 )}
-                {preview ? <p className="text-[10px] truncate">{preview}</p> : null}
+                {preview ? (
+                  <p className="text-[10px] truncate">{preview}</p>
+                ) : null}
               </span>
             );
           })}
@@ -75,6 +96,7 @@ const initialMessages = [
     text: "Hello! I am ready to answer questions based on my context documents.",
     sources: [],
     timing: null,
+    error: null,
   },
 ];
 
@@ -88,7 +110,7 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
   const [streamError, setStreamError] = useState(null);
   const messagesEndRef = useRef(null);
 
-  // ✅ real cancel for stream
+  // Cancel stream
   const streamAbortRef = useRef(null);
 
   const scrollToBottom = () => {
@@ -106,13 +128,13 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
     }
   };
 
-  // ✅ parse one SSE "frame" into JSON (supports multiple data: lines)
+  // Parse one SSE frame into JSON (supports multiple data: lines)
   const parseSseFrameToJson = (frame) => {
-    // ignore comments/heartbeats
-    if (!frame || frame.startsWith(":")) return null;
+    if (!frame) return null;
+    if (frame.startsWith(":")) return null; // heartbeat/comment
 
-    const lines = frame.split("\n");
-    const dataLines = lines
+    const dataLines = frame
+      .split("\n")
       .filter((l) => l.startsWith("data:"))
       .map((l) => l.replace(/^data:\s*/, ""));
 
@@ -137,22 +159,35 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
     setIsLoading(true);
     setStreamError(null);
 
+    // stop any prior stream
+    stop();
+
     // Add user message
-    setMessages((prev) => [...prev, { type: "user", text: userQuery, sources: [], timing: null }]);
+    setMessages((prev) => [
+      ...prev,
+      { type: "user", text: userQuery, sources: [], timing: null, error: null },
+    ]);
 
-    // Prepare chatbot response
-    let currentResponse = { type: "chatbot", text: "", sources: [], timing: null, error: null };
-    let responseBuffer = "";
-    let initialResponseAdded = false;
+    // Add an empty chatbot message immediately so updates always target it
+    let chatbotIndex = -1;
+    setMessages((prev) => {
+      const next = [
+        ...prev,
+        { type: "chatbot", text: "", sources: [], timing: null, error: null },
+      ];
+      chatbotIndex = next.length - 1;
+      return next;
+    });
 
-    // Create abort controller for this stream
-    stop(); // stop any prior
+    // Abort controller for this stream
     const ac = new AbortController();
     streamAbortRef.current = ac;
 
-    try {
-      const apiUrl = joinUrl(API_BASE, "/chat/stream") + `?q=${encodeURIComponent(userQuery)}&heartbeat=2`;
+    const apiUrl =
+      joinUrl(API_BASE, "/chat/stream") +
+      `?q=${encodeURIComponent(userQuery)}&heartbeat=2`;
 
+    try {
       const response = await fetch(apiUrl, {
         method: "GET",
         headers: {
@@ -170,68 +205,91 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
 
+      let buffer = "";
+      let gotAnyToken = false;
+
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
 
-        responseBuffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: true });
 
-        // split on blank line => one SSE frame
-        const frames = responseBuffer.split("\n\n");
-        responseBuffer = frames.pop() ?? "";
+        const frames = buffer.split("\n\n");
+        buffer = frames.pop() ?? "";
 
         for (const frame of frames) {
           const data = parseSseFrameToJson(frame);
           if (!data) continue;
 
-          // Your backend emits: sources/token/perf_time/done
-          if (data.type === "token") {
-            currentResponse.text += data.text ?? "";
-          } else if (data.type === "sources") {
-            currentResponse.sources = Array.isArray(data.items) ? data.items : [];
-          } else if (data.type === "perf_time") {
-            currentResponse.timing = data.data ?? null;
-          } else if (data.type === "error") {
-            // backend uses error field in your api_v2; keep both just in case
-            currentResponse.error = data.error ?? data.message ?? "Unknown error";
-          } else if (data.type === "done") {
+          setMessages((prev) => {
+            const next = [...prev];
+            const idx =
+              chatbotIndex >= 0 ? chatbotIndex : Math.max(0, next.length - 1);
+
+            const cur = next[idx] ?? {
+              type: "chatbot",
+              text: "",
+              sources: [],
+              timing: null,
+              error: null,
+            };
+
+            // backend emits: sources/token/perf_time/done
+            if (data.type === "token") {
+              gotAnyToken = true;
+              next[idx] = { ...cur, text: (cur.text || "") + (data.text ?? "") };
+            } else if (data.type === "sources") {
+              next[idx] = {
+                ...cur,
+                sources: Array.isArray(data.items) ? data.items : [],
+              };
+            } else if (data.type === "perf_time") {
+              next[idx] = { ...cur, timing: data.data ?? null };
+            } else if (data.type === "error") {
+              next[idx] = {
+                ...cur,
+                error: data.error ?? data.message ?? "Unknown error",
+              };
+            } else if (data.type === "done") {
+              // nothing special; stream will end naturally
+            }
+
+            return next;
+          });
+
+          if (data.type === "done") {
             try {
               await reader.cancel();
             } catch {}
             break;
           }
-
-          // Update UI
-          setMessages((prev) => {
-            if (!initialResponseAdded) {
-              initialResponseAdded = true;
-              return [...prev, { ...currentResponse }];
-            }
-            const newMessages = [...prev];
-            newMessages[newMessages.length - 1] = { ...currentResponse };
-            return newMessages;
-          });
         }
       }
+
+      // If the stream closed before any tokens arrived, show a clearer hint
+      if (!gotAnyToken) {
+        setStreamError(
+          `SSE closed before any tokens. Try opening ${joinUrl(
+            API_BASE,
+            "/chat/stream"
+          )} in emulator Chrome to confirm it streams.`
+        );
+      }
     } catch (error) {
-      // Abort is not an error we want to show as failure
       if (error?.name === "AbortError") {
-        // keep partial text
+        // user pressed Stop; keep partial text
       } else {
         const errorMessage = `Connection Error: ${error?.message ?? String(error)}`;
         setStreamError(errorMessage);
 
-        if (!initialResponseAdded) {
-          setMessages((prev) => [...prev, { type: "chatbot", text: "", sources: [], timing: null, error: errorMessage }]);
-        } else {
-          // update last message to include error
-          setMessages((prev) => {
-            const newMessages = [...prev];
-            const last = newMessages[newMessages.length - 1];
-            newMessages[newMessages.length - 1] = { ...last, error: errorMessage };
-            return newMessages;
-          });
-        }
+        setMessages((prev) => {
+          const next = [...prev];
+          const idx =
+            chatbotIndex >= 0 ? chatbotIndex : Math.max(0, next.length - 1);
+          const cur = next[idx];
+          next[idx] = { ...cur, error: errorMessage };
+          return next;
+        });
       }
     } finally {
       setIsLoading(false);
@@ -243,7 +301,14 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
     <div className="flex flex-col h-[70vh] bg-gray-800 p-6 rounded-xl shadow-2xl mt-4">
       <div className="flex-grow overflow-y-auto mb-4 space-y-4 pr-3">
         {messages.map((msg, index) => (
-          <ChatMessage key={index} type={msg.type} text={msg.text} sources={msg.sources} timing={msg.timing} error={msg.error} />
+          <ChatMessage
+            key={index}
+            type={msg.type}
+            text={msg.text}
+            sources={msg.sources}
+            timing={msg.timing}
+            error={msg.error}
+          />
         ))}
         <div ref={messagesEndRef} />
       </div>
@@ -253,7 +318,13 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
           type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          placeholder={isLoading ? "Generating response..." : debugMode ? "Debugging in progress..." : "Ask your question..."}
+          placeholder={
+            isLoading
+              ? "Generating response..."
+              : debugMode
+              ? "Debugging in progress..."
+              : "Ask your question..."
+          }
           disabled={isLoading || debugMode}
           className="flex-grow p-3 bg-gray-700 border border-gray-600 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-indigo-500 transition duration-150"
         />
@@ -262,17 +333,12 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
           type="submit"
           disabled={isLoading || debugMode}
           className={`p-3 rounded-lg font-semibold transition duration-150 flex items-center justify-center ${
-            isLoading || debugMode ? "bg-gray-500 cursor-not-allowed" : "bg-indigo-600 hover:bg-indigo-700 shadow-md"
+            isLoading || debugMode
+              ? "bg-gray-500 cursor-not-allowed"
+              : "bg-indigo-600 hover:bg-indigo-700 shadow-md"
           } w-24`}
         >
-          {isLoading ? (
-            <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-          ) : (
-            "Send"
-          )}
+          {isLoading ? "…" : "Send"}
         </button>
 
         <button
@@ -280,7 +346,9 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
           onClick={stop}
           disabled={!isLoading}
           className={`p-3 rounded-lg font-semibold transition duration-150 flex items-center justify-center ${
-            !isLoading ? "bg-gray-700 cursor-not-allowed opacity-60" : "bg-gray-600 hover:bg-gray-500"
+            !isLoading
+              ? "bg-gray-700 cursor-not-allowed opacity-60"
+              : "bg-gray-600 hover:bg-gray-500"
           } w-24`}
         >
           Stop
@@ -293,6 +361,10 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
           <div className="mt-1 text-xs opacity-80">
             API_BASE=<span className="font-mono">{String(API_BASE)}</span>
           </div>
+          <div className="mt-1 text-xs opacity-80">
+            Try emulator Chrome:{" "}
+            <span className="font-mono">{joinUrl(API_BASE, "/health")}</span>
+          </div>
         </div>
       )}
     </div>
@@ -300,7 +372,7 @@ const ChatBoxStreamComponent = ({ debugMode }) => {
 };
 
 // ------------------------
-// App: adds backend badge + debug ping using API_BASE
+// App: backend badge + debug ping using API_BASE
 // ------------------------
 export default function App() {
   const [debugMode, setDebugMode] = useState(false);
@@ -308,8 +380,10 @@ export default function App() {
   const [msg, setMsg] = useState("Ready");
   const [raw, setRaw] = useState("");
 
-  // ✅ backend badge
-  const [backend, setBackend] = useState({ status: "checking", detail: "" });
+  const [backend, setBackend] = useState({
+    status: "checking",
+    detail: "",
+  });
 
   const ping = async () => {
     setMsg("Pinging /health …");
@@ -327,7 +401,7 @@ export default function App() {
     }
   };
 
-  // ✅ auto health ping (badge)
+  // Auto health ping (badge)
   useEffect(() => {
     let alive = true;
     const ac = new AbortController();
@@ -335,9 +409,12 @@ export default function App() {
     const run = async () => {
       try {
         const url = joinUrl(API_BASE, "/health");
-        const r = await fetch(url, { signal: ac.signal, headers: { Accept: "application/json" } });
-        const j = await r.json().catch(() => null);
+        const r = await fetch(url, {
+          signal: ac.signal,
+          headers: { Accept: "application/json" },
+        });
 
+        const j = await r.json().catch(() => null);
         if (!alive) return;
 
         if (r.ok && j?.ok) {
@@ -347,11 +424,17 @@ export default function App() {
             detail: ready ? "Model ready" : "Backend up (warming)",
           });
         } else {
-          setBackend({ status: "down", detail: `HTTP ${r.status}` });
+          setBackend({
+            status: "down",
+            detail: `HTTP ${r.status}`,
+          });
         }
       } catch (e) {
         if (!alive) return;
-        setBackend({ status: "down", detail: e?.message ?? String(e) });
+        setBackend({
+          status: "down",
+          detail: e?.message ?? String(e),
+        });
       }
     };
 
@@ -373,16 +456,24 @@ export default function App() {
       : "Checking backend…";
 
   const badgeBg =
-    backend.status === "up" ? "bg-green-900/30 border-green-700 text-green-200" : backend.status === "down" ? "bg-red-900/30 border-red-700 text-red-200" : "bg-gray-800 border-gray-700 text-gray-200";
+    backend.status === "up"
+      ? "bg-green-900/30 border-green-700 text-green-200"
+      : backend.status === "down"
+      ? "bg-red-900/30 border-red-700 text-red-200"
+      : "bg-gray-800 border-gray-700 text-gray-200";
 
   return (
     <div className="min-h-screen bg-gray-900 text-gray-100 flex flex-col items-center p-4">
       <div className="w-full max-w-3xl">
         <header className="flex justify-between items-center mb-6 py-4 border-b border-gray-700">
           <div className="flex flex-col gap-2">
-            <h1 className="text-3xl font-bold text-indigo-400">{debugMode ? "RAG Chat – Debug" : "RAG Chatbot"}</h1>
+            <h1 className="text-3xl font-bold text-indigo-400">
+              {debugMode ? "RAG Chat – Debug" : "RAG Chatbot"}
+            </h1>
 
-            <div className={`inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border ${badgeBg}`}>
+            <div
+              className={`inline-flex items-center gap-2 text-xs px-3 py-1 rounded-full border ${badgeBg}`}
+            >
               <span>{badgeText}</span>
               <span className="opacity-70">API: {String(API_BASE)}</span>
             </div>

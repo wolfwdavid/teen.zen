@@ -12,7 +12,9 @@ import {
   Globe,
   Terminal,
   UserPlus,
-  ShieldAlert
+  ShieldAlert,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -87,6 +89,10 @@ export default function App() {
   const [streamError, setStreamError] = useState(null);
   const [backend, setBackend] = useState({ status: "checking", detail: "" });
   
+  // Registration States
+  const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState('user'); // 'user' or 'provider'
+
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
 
@@ -330,17 +336,78 @@ export default function App() {
                 <h2 className="text-3xl font-bold tracking-tight">Create Account</h2>
                 <p className="mt-2 text-sm text-zinc-500">Sign up to sync your document history across devices.</p>
               </div>
-              <div className="space-y-4">
+              <div className="space-y-5">
+                {/* Identity Field */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
-                  <input className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all" placeholder="name@example.com" />
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">
+                    EMAIL ADDRESS or PHONE NUMBER
+                  </label>
+                  <input 
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700" 
+                    placeholder="name@example.com or phone number" 
+                  />
                 </div>
+
+                {/* Password Field */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Password</label>
-                  <input type="password" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all" placeholder="••••••••" />
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1 flex justify-between items-center">
+                    PASSWORD
+                    <span className="text-[9px] text-indigo-400 normal-case italic">suggestion: use symbols & numbers</span>
+                  </label>
+                  <div className="relative">
+                    <input 
+                      type={showPassword ? "text" : "password"} 
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all" 
+                      placeholder="••••••••" 
+                    />
+                    <button 
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors"
+                    >
+                      {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-zinc-600 mt-1 ml-1 font-mono">
+                    Suggestion: <span className="text-emerald-500/80">Tr0ub4dur&3!</span>
+                  </p>
+                </div>
+
+                {/* Role Selection */}
+                <div className="space-y-2 pt-2 border-t border-zinc-800/50">
+                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Account Role</label>
+                   <div className="flex gap-6 px-1">
+                      <label className="flex items-center gap-2.5 group cursor-pointer">
+                        <div className="relative flex h-5 w-5 items-center justify-center">
+                          <input 
+                            type="checkbox" 
+                            className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                            checked={role === 'user'}
+                            onChange={() => setRole('user')}
+                          />
+                          <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                        </div>
+                        <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">User</span>
+                      </label>
+
+                      <label className="flex items-center gap-2.5 group cursor-pointer">
+                        <div className="relative flex h-5 w-5 items-center justify-center">
+                          <input 
+                            type="checkbox" 
+                            className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                            checked={role === 'provider'}
+                            onChange={() => setRole('provider')}
+                          />
+                          <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                        </div>
+                        <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">Provider</span>
+                      </label>
+                   </div>
                 </div>
               </div>
+
               <button className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all">Sign Up Now</button>
+              
               <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
                 By signing up, you agree to our <span className="text-zinc-400 underline cursor-pointer">Terms of Service</span>
               </p>

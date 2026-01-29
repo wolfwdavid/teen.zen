@@ -1,20 +1,15 @@
 import React from "react";
-import ReactDOM from "react-dom/client";
+import { createRoot } from "react-dom/client";
 
-// ✅ Explicit extension avoids any Vite / path confusion
 import App from "./App.jsx";
 
-// ✅ Global styles
-import "./styles/theme.css";
+// Tailwind v4 entry (contains: @import "tailwindcss";)
+import "./index.css";
 
 const rootEl = document.getElementById("root");
+if (!rootEl) throw new Error("Root element #root not found");
 
-if (!rootEl) {
-  throw new Error("Root element #root not found");
-}
+createRoot(rootEl).render(<App />);
 
-ReactDOM.createRoot(rootEl).render(
-  // 🔥 Temporarily REMOVE StrictMode while debugging SSE / effects
-  // StrictMode double-invokes effects in dev and can break streams
-  <App />
-);
+// Optional: quick sanity check in console
+console.log("[frontend] mounted");

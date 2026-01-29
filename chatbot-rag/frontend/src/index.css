@@ -1,54 +1,12 @@
+@import "tailwindcss";
+
+/* optional base defaults */
+html,
+body,
+#root {
+  height: 100%;
+}
+
 body {
   margin: 0;
-  font-family: sans-serif;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background: #f5f5f5;
-}
-
-.chat-container {
-  width: 400px;
-  height: 600px;
-  border: 1px solid #ddd;
-  display: flex;
-  flex-direction: column;
-  background: #fff;
-}
-
-.chat-box {
-  flex: 1;
-  padding: 10px;
-  overflow-y: auto;
-}
-
-.msg.user {
-  text-align: right;
-  color: blue;
-}
-
-.msg.bot {
-  text-align: left;
-  color: green;
-}
-
-.chat-input {
-  display: flex;
-  border-top: 1px solid #ddd;
-}
-
-.chat-input input {
-  flex: 1;
-  padding: 10px;
-  border: none;
-  outline: none;
-}
-
-.chat-input button {
-  padding: 10px;
-  border: none;
-  background: blue;
-  color: white;
-  cursor: pointer;
 }

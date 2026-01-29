@@ -21,14 +21,14 @@ function pickBase() {
     const env = normalize(envBaseRaw);
 
     if (native && /^http:\/\/localhost(:\d+)?$/i.test(env)) {
-      return "http://10.0.2.2:8000";
+      return  "http://localhost:8000";
     }
 
     return env;
   }
 
   // No env → smart defaults
-  return native ? "http://10.0.2.2:8000" : "http://localhost:8000";
+  return native ? "http://localhost:8000" : "http://localhost:8000";
 }
 
 export const API_BASE = pickBase();

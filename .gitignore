@@ -81,3 +81,11 @@ Thumbs.db
 # Logs
 ############################################
 *.log
+node_modules/
+*.backup
+.chroma/
+.onnx/
+__pycache__/
+*.pyc
+.venv/
+.env

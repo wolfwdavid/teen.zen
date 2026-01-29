@@ -1,4 +1,4 @@
-import { API_BASE } from "./apibase";
+import { API_BASE } from "./apiBase";
 
 // ✅ Updated types to support retrieval scoring visibility
 export type SourceItem = {

@@ -1,261 +1,199 @@
-// src/App.jsx
-import React, { useEffect, useRef, useState } from "react";
-import { Check, X, Clock } from "lucide-react";
-import { API_BASE } from "./api/apiBase";
+import React, { useState, useEffect, useRef } from 'react';
+import { 
+  Check, 
+  X, 
+  Clock, 
+  Bot, 
+  User, 
+  Send, 
+  StopCircle, 
+  MessageSquare,
+  ShieldCheck,
+  Globe,
+  Terminal,
+  UserPlus,
+  ShieldAlert
+} from 'lucide-react';
 
-// ------------------------
-// Small URL helper
-// ------------------------
+// --- Configuration ---
+const API_BASE = "http://localhost:8000";
+
+// --- Helpers ---
 function joinUrl(base, path) {
   const b = String(base || "").trim().replace(/\/+$/, "");
   const p = String(path || "").trim().replace(/^\/+/, "");
   return `${b}/${p}`;
 }
 
-// ------------------------
-// ChatMessage (Tailwind v4-friendly classes)
-// ------------------------
-function ChatMessage({ type, text, sources = [], timing, error }) {
-  const isUser = type === "user";
+// --- Components ---
 
+const ChatMessage = ({ type, text, sources = [], timing, error }) => {
+  const isUser = type === 'user';
+  
   return (
-    <div
-      className={[
-        "max-w-[90%] md:max-w-[75%] rounded-2xl px-4 py-3 shadow-sm ring-1 ring-white/10",
-        "mb-3 flex flex-col gap-2",
-        isUser ? "self-end bg-indigo-600 text-white" : "self-start bg-zinc-900/70 text-zinc-100",
-      ].join(" ")}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <p className="text-xs font-semibold tracking-wide opacity-90">
-          {isUser ? "You" : "RAG Chatbot"}
-        </p>
+    <div className={`group flex w-full flex-col ${isUser ? 'items-end' : 'items-start'} mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+      <div className={`flex max-w-[85%] gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
+        <div className={`flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full border shadow-sm ${
+          isUser ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+        }`}>
+          {isUser ? <User size={18} /> : <Bot size={18} />}
+        </div>
+
+        <div className={`relative flex flex-col gap-2 rounded-2xl px-4 py-3 text-sm shadow-sm ring-1 ${
+          isUser 
+            ? 'bg-indigo-600 text-white ring-indigo-500' 
+            : 'bg-zinc-900/50 text-zinc-100 ring-zinc-800 backdrop-blur-sm'
+        }`}>
+          {error ? (
+            <div className="flex items-center gap-2 text-red-300 font-medium">
+              <ShieldAlert size={14} /> <span>{error}</span>
+            </div>
+          ) : (
+            <div className="whitespace-pre-wrap leading-relaxed">{text || (isUser ? "" : "...")}</div>
+          )}
+
+          {timing && (
+            <div className={`mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold border-t border-white/5 pt-2 ${isUser ? 'text-indigo-200' : 'text-zinc-500'}`}>
+              <Clock size={12} className={isUser ? "text-indigo-200" : "text-amber-400"} />
+              <span>{timing}s latency</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {error ? (
-        <div className="inline-flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-sm text-red-200 ring-1 ring-red-500/20">
-          <X className="h-4 w-4" />
-          <span className="font-medium">Error:</span>
-          <span className="break-words">{error}</span>
-        </div>
-      ) : (
-        <div className="whitespace-pre-wrap break-words text-sm leading-relaxed">{text}</div>
-      )}
-
-      {!!timing && (
-        <div className="mt-1 inline-flex items-center gap-2 border-t border-white/10 pt-2 text-xs text-zinc-300">
-          <Clock className="h-3.5 w-3.5 text-amber-300" />
-          <span>Response time:</span>
-          <span className="font-semibold text-amber-300">{timing}s</span>
-        </div>
-      )}
-
-      {Array.isArray(sources) && sources.length > 0 && (
-        <div className="mt-2 border-t border-white/10 pt-2">
-          <p className="mb-2 text-xs font-semibold text-zinc-300">Sources</p>
-
-          <div className="flex flex-wrap gap-2">
-            {sources.map((s, i) => {
-              const href = s?.href;
-              const label = s?.source || "source";
-              const preview = s?.preview || "";
-
-              const pill = (
-                <span
-                  className="inline-flex max-w-full items-center gap-2 rounded-full bg-indigo-500/10 px-3 py-1 text-xs text-indigo-200 ring-1 ring-indigo-500/20"
-                  title={preview}
-                >
-                  <span className="opacity-80">[{i + 1}]</span>
-                  <span className="truncate">{label}</span>
-                </span>
-              );
-
-              return href ? (
-                <a
-                  key={i}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hover:opacity-90"
-                >
-                  {pill}
-                </a>
-              ) : (
-                <span key={i}>{pill}</span>
-              );
-            })}
-          </div>
+      {!isUser && sources.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-2 pl-12">
+          {sources.map((s, i) => (
+            <div 
+              key={i} 
+              title={s.preview}
+              className="group/pill flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/30 px-2.5 py-1 text-[11px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 cursor-help"
+            >
+              <span className="font-mono text-indigo-400">[{i + 1}]</span>
+              <span className="max-w-[120px] truncate">{s.source}</span>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
-}
+};
 
-// ------------------------
-// Initial messages
-// ------------------------
-const initialMessages = [
-  {
-    type: "chatbot",
-    text: "Hello! I am ready to answer questions based on my context documents.",
-    sources: [],
-    timing: null,
-    error: null,
-  },
-];
-
-// ------------------------
-// Chat component (SSE via fetch streaming)
-// ------------------------
-function ChatBoxStreamComponent({ debugMode }) {
-  const [messages, setMessages] = useState(initialMessages);
+export default function App() {
+  const [view, setView] = useState('chat'); // 'chat', 'register', 'debug'
+  const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamError, setStreamError] = useState(null);
+  const [backend, setBackend] = useState({ status: "checking", detail: "" });
+  
   const messagesEndRef = useRef(null);
-
   const streamAbortRef = useRef(null);
 
-  const scrollToBottom = () => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  useEffect(scrollToBottom, [messages]);
+  // Auto-scroll
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
 
-  const stop = () => {
+  // Health check
+  useEffect(() => {
+    let alive = true;
+    const ac = new AbortController();
+    const checkStatus = async () => {
+      try {
+        const url = joinUrl(API_BASE, "/health");
+        const r = await fetch(url, { signal: ac.signal });
+        const j = await r.json().catch(() => null);
+        if (!alive) return;
+        if (r.ok && j?.status === 'ok') {
+          setBackend({ status: "up", detail: "Model Ready" });
+        } else {
+          setBackend({ status: "down", detail: `HTTP ${r.status}` });
+        }
+      } catch (e) {
+        if (alive) setBackend({ status: "down", detail: "Offline" });
+      }
+    };
+    checkStatus();
+    const t = setInterval(checkStatus, 10000);
+    return () => { alive = false; clearInterval(t); ac.abort(); };
+  }, []);
+
+  const handleStop = () => {
     setIsLoading(false);
     if (streamAbortRef.current) {
-      try {
-        streamAbortRef.current.abort();
-      } catch {}
+      try { streamAbortRef.current.abort(); } catch {}
       streamAbortRef.current = null;
     }
   };
 
-  const parseSseFrameToJson = (frame) => {
-    if (!frame) return null;
-    if (frame.startsWith(":")) return null;
-
-    const dataLines = frame
-      .split("\n")
-      .filter((l) => l.startsWith("data:"))
-      .map((l) => l.replace(/^data:\s*/, ""));
-
-    if (!dataLines.length) return null;
-
-    const payload = dataLines.join("\n").trim();
-    if (!payload) return null;
-
-    try {
-      return JSON.parse(payload);
-    } catch {
-      return null;
-    }
-  };
-
-  const handleSubmit = async (e) => {
+  const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (!input.trim() || isLoading || debugMode) return;
+    if (!input.trim() || isLoading) return;
 
     const userQuery = input.trim();
     setInput("");
     setIsLoading(true);
     setStreamError(null);
 
-    stop();
-
-    // Add user message
-    setMessages((prev) => [
-      ...prev,
-      { type: "user", text: userQuery, sources: [], timing: null, error: null },
-    ]);
-
-    // Add empty bot message immediately
-    let chatbotIndex = -1;
-    setMessages((prev) => {
-      const next = [...prev, { type: "chatbot", text: "", sources: [], timing: null, error: null }];
-      chatbotIndex = next.length - 1;
-      return next;
-    });
+    // 1. Add user message
+    setMessages(prev => [...prev, { type: "user", text: userQuery }]);
+    
+    // 2. Add placeholder chatbot message
+    let chatbotMsg = { type: 'chatbot', text: '', sources: [], timing: null, error: null };
+    setMessages(prev => [...prev, chatbotMsg]);
 
     const ac = new AbortController();
     streamAbortRef.current = ac;
 
-    const apiUrl =
-      joinUrl(API_BASE, "/chat/stream") + `?q=${encodeURIComponent(userQuery)}&heartbeat=2`;
+    const apiUrl = joinUrl(API_BASE, "/chat/stream") + `?q=${encodeURIComponent(userQuery)}`;
 
     try {
-      const response = await fetch(apiUrl, {
-        method: "GET",
-        headers: { Accept: "text/event-stream", "Cache-Control": "no-cache" },
-        signal: ac.signal,
-      });
-
-      if (!response.ok || !response.body) {
-        const errorText = await response.text().catch(() => "");
-        throw new Error(`HTTP ${response.status}: ${errorText || "Server Error"}`);
-      }
+      const response = await fetch(apiUrl, { signal: ac.signal });
+      if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+      if (!response.body) throw new Error("Readable stream not supported");
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
-
       let buffer = "";
-      let gotAnyToken = false;
 
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
-
+        
         buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() ?? "";
 
-        const frames = buffer.split("\n\n");
-        buffer = frames.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          
+          try {
+            const data = JSON.parse(line.replace(/^data:\s*/, "").trim());
+            
+            if (data.type === "token") chatbotMsg.text += (data.text ?? "");
+            else if (data.type === "sources") chatbotMsg.sources = data.items ?? [];
+            else if (data.type === "perf_time") chatbotMsg.timing = data.data;
+            else if (data.type === "error") chatbotMsg.error = data.message;
+            else if (data.type === "done") break;
 
-        for (const frame of frames) {
-          const data = parseSseFrameToJson(frame);
-          if (!data) continue;
-
-          setMessages((prev) => {
-            const next = [...prev];
-            const idx = chatbotIndex >= 0 ? chatbotIndex : Math.max(0, next.length - 1);
-            const cur =
-              next[idx] ?? { type: "chatbot", text: "", sources: [], timing: null, error: null };
-
-            if (data.type === "token") {
-              gotAnyToken = true;
-              next[idx] = { ...cur, text: (cur.text || "") + (data.text ?? "") };
-            } else if (data.type === "sources") {
-              next[idx] = { ...cur, sources: Array.isArray(data.items) ? data.items : [] };
-            } else if (data.type === "perf_time") {
-              next[idx] = { ...cur, timing: data.data ?? null };
-            } else if (data.type === "error") {
-              next[idx] = { ...cur, error: data.error ?? data.message ?? "Unknown error" };
-            }
-
-            return next;
-          });
-
-          if (data.type === "done") {
-            try {
-              await reader.cancel();
-            } catch {}
-            break;
+            setMessages(prev => {
+              const next = [...prev];
+              next[next.length - 1] = { ...chatbotMsg };
+              return next;
+            });
+          } catch (e) {
+            console.error("SSE Parse error", e);
           }
         }
       }
-
-      if (!gotAnyToken) {
-        setStreamError(
-          `SSE closed before any tokens. Open ${joinUrl(API_BASE, "/chat/stream")} in emulator Chrome to confirm it streams.`
-        );
-      }
     } catch (error) {
       if (error?.name !== "AbortError") {
-        const errorMessage = `Connection Error: ${error?.message ?? String(error)}`;
-        setStreamError(errorMessage);
-
-        setMessages((prev) => {
+        const msg = error?.message || String(error);
+        setStreamError(msg);
+        setMessages(prev => {
           const next = [...prev];
-          const idx = chatbotIndex >= 0 ? chatbotIndex : Math.max(0, next.length - 1);
-          const cur = next[idx] ?? { type: "chatbot", text: "", sources: [], timing: null, error: null };
-          next[idx] = { ...cur, error: errorMessage };
+          next[next.length - 1].error = msg;
           return next;
         });
       }
@@ -266,215 +204,188 @@ function ChatBoxStreamComponent({ debugMode }) {
   };
 
   return (
-    <div className="mt-6 flex h-[70vh] flex-col overflow-hidden rounded-3xl bg-zinc-950/60 p-5 shadow-2xl ring-1 ring-white/10 backdrop-blur">
-      {/* history */}
-      <div className="flex-1 space-y-3 overflow-y-auto pr-2">
-        {messages.map((m, i) => (
-          <ChatMessage
-            key={i}
-            type={m.type}
-            text={m.text}
-            sources={m.sources}
-            timing={m.timing}
-            error={m.error}
-          />
-        ))}
-        <div ref={messagesEndRef} />
-      </div>
-
-      {/* composer */}
-      <form onSubmit={handleSubmit} className="mt-4 flex gap-2">
-        <div className="relative flex-1">
-          <input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            disabled={isLoading || debugMode}
-            placeholder={
-              isLoading
-                ? "Generating response…"
-                : debugMode
-                ? "Debugging in progress…"
-                : "Ask your question…"
-            }
-            className="w-full rounded-2xl border border-white/10 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-100 placeholder:text-zinc-400 outline-none ring-0 focus:border-indigo-500/40 focus:ring-4 focus:ring-indigo-500/10"
-          />
-        </div>
-
-        <button
-          type="submit"
-          disabled={isLoading || debugMode}
-          className={[
-            "inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold",
-            "shadow-sm ring-1 ring-white/10 transition",
-            isLoading || debugMode
-              ? "cursor-not-allowed bg-zinc-800 text-zinc-400"
-              : "bg-indigo-600 text-white hover:bg-indigo-500",
-          ].join(" ")}
-        >
-          {isLoading ? "…" : "Send"}
-        </button>
-
-        <button
-          type="button"
-          onClick={stop}
-          disabled={!isLoading}
-          className={[
-            "inline-flex items-center justify-center rounded-2xl px-4 py-3 text-sm font-semibold",
-            "ring-1 ring-white/10 transition",
-            !isLoading
-              ? "cursor-not-allowed bg-zinc-900/50 text-zinc-500"
-              : "bg-zinc-800 text-zinc-100 hover:bg-zinc-700",
-          ].join(" ")}
-        >
-          Stop
-        </button>
-      </form>
-
-      {streamError && (
-        <div className="mt-3 rounded-2xl bg-red-500/10 p-3 text-sm text-red-200 ring-1 ring-red-500/20">
-          <div className="flex items-start gap-2">
-            <X className="mt-0.5 h-4 w-4" />
-            <div className="min-w-0">
-              <div className="font-semibold">Streaming error</div>
-              <div className="break-words">{streamError}</div>
-              <div className="mt-2 text-xs text-red-200/80">
-                API_BASE=<span className="font-mono">{String(API_BASE)}</span>
-              </div>
-              <div className="text-xs text-red-200/80">
-                Try emulator Chrome:{" "}
-                <span className="font-mono">{joinUrl(API_BASE, "/health")}</span>
-              </div>
+    <div className="flex h-screen w-full flex-col bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
+      {/* Navbar */}
+      <nav className="flex h-16 items-center justify-between border-b border-zinc-900 bg-zinc-950/50 px-6 backdrop-blur-md shrink-0">
+        <div className="flex items-center gap-3">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
+            <Bot className="w-5 h-5 text-white" />
+          </div>
+          <div className="flex flex-col">
+            <span className="text-sm font-bold tracking-tight leading-none">RAG Chatbot <span className="text-indigo-500">Pro</span></span>
+            <div className="mt-1 flex items-center gap-2">
+              <div className={`h-1.5 w-1.5 rounded-full ${backend.status === 'up' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
+              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                {backend.status === 'up' ? backend.detail : 'Offline'}
+              </span>
             </div>
           </div>
         </div>
-      )}
-    </div>
-  );
-}
 
-// ------------------------
-// App
-// ------------------------
-export default function App() {
-  const [debugMode, setDebugMode] = useState(false);
-  const [msg, setMsg] = useState("Ready");
-  const [raw, setRaw] = useState("");
-  const [backend, setBackend] = useState({ status: "checking", detail: "" });
-
-  const isNative =
-    typeof window !== "undefined" && (window?.Capacitor?.isNativePlatform?.() ?? false);
-
-  const ping = async () => {
-    setMsg("Pinging /health …");
-    setRaw("");
-    try {
-      const url = joinUrl(API_BASE, "/health");
-      const r = await fetch(url, { headers: { Accept: "application/json" } });
-      const txt = await r.text();
-      setMsg(`/health → HTTP ${r.status}`);
-      setRaw(txt);
-    } catch (e) {
-      setMsg("Fetch error");
-      setRaw(String(e));
-    }
-  };
-
-  useEffect(() => {
-    let alive = true;
-    const ac = new AbortController();
-
-    const run = async () => {
-      try {
-        const url = joinUrl(API_BASE, "/health");
-        const r = await fetch(url, { signal: ac.signal, headers: { Accept: "application/json" } });
-        const j = await r.json().catch(() => null);
-        if (!alive) return;
-
-        if (r.ok && j?.ok) {
-          const ready = !!j.initialized && !!j.model_loaded;
-          setBackend({ status: "up", detail: ready ? "Model ready" : "Backend up (warming)" });
-        } else {
-          setBackend({ status: "down", detail: `HTTP ${r.status}` });
-        }
-      } catch (e) {
-        if (!alive) return;
-        setBackend({ status: "down", detail: e?.message ?? String(e) });
-      }
-    };
-
-    run();
-    const t = setInterval(run, 10000);
-    return () => {
-      alive = false;
-      clearInterval(t);
-      ac.abort();
-    };
-  }, []);
-
-  const badge =
-    backend.status === "up"
-      ? { text: `Backend connected ✓ — ${backend.detail}`, cls: "bg-emerald-500/10 text-emerald-200 ring-emerald-500/20" }
-      : backend.status === "down"
-      ? { text: `Backend offline ✕ — ${backend.detail}`, cls: "bg-red-500/10 text-red-200 ring-red-500/20" }
-      : { text: "Checking backend…", cls: "bg-zinc-500/10 text-zinc-200 ring-white/10" };
-
-  return (
-    <div className="min-h-screen bg-gradient-to-b from-zinc-950 via-zinc-950 to-black text-zinc-100">
-      <div className="mx-auto w-full max-w-5xl px-4 py-8">
-        <header className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-semibold tracking-tight">
-              {debugMode ? "RAG Chat – Debug" : "RAG Chatbot"}
-            </h1>
-
-            <div className="flex flex-wrap items-center gap-2">
-              <span className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs ring-1 ${badge.cls}`}>
-                {badge.text}
-              </span>
-
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
-                API: <span className="font-mono">{String(API_BASE)}</span>
-              </span>
-
-              <span className="inline-flex items-center gap-2 rounded-full bg-white/5 px-3 py-1 text-xs text-zinc-300 ring-1 ring-white/10">
-                Native: <span className="font-mono">{String(isNative)}</span>
-              </span>
-            </div>
-          </div>
-
-          <button
-            onClick={() => setDebugMode((d) => !d)}
-            className="inline-flex items-center justify-center rounded-2xl bg-indigo-600 px-4 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-white/10 transition hover:bg-indigo-500"
+        <div className="flex items-center gap-2">
+          <button 
+            onClick={() => setView('chat')} 
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+              view === 'chat' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
           >
-            {debugMode ? "💬 Chat Mode" : "🧠 Debug Mode"}
+            <MessageSquare size={14} /> Chat
           </button>
-        </header>
+          <button 
+            onClick={() => setView('register')} 
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+              view === 'register' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <UserPlus size={14} /> Register
+          </button>
+          <button 
+            onClick={() => setView('debug')} 
+            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+              view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+            }`}
+          >
+            <Terminal size={14} /> Debug
+          </button>
+        </div>
+      </nav>
 
-        {debugMode ? (
-          <div className="mt-6 rounded-3xl bg-zinc-950/60 p-5 shadow-2xl ring-1 ring-white/10 backdrop-blur">
-            <button
-              type="button"
-              onClick={ping}
-              className="inline-flex items-center justify-center rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow-sm ring-1 ring-white/10 transition hover:bg-emerald-500"
-            >
-              <Check className="mr-2 h-4 w-4" />
-              Ping Backend /health
-            </button>
-
-            <div className="mt-4 text-sm text-zinc-200">
-              <span className="font-semibold text-emerald-200">Status:</span> {msg}
+      {/* Main Content */}
+      <main className="flex-1 relative overflow-hidden flex flex-col">
+        {view === 'chat' && (
+          <>
+            <div className="flex-1 overflow-y-auto px-4 py-8">
+              <div className="mx-auto max-w-3xl">
+                {messages.length === 0 ? (
+                  <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500">
+                    <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900 ring-1 ring-zinc-800 shadow-inner">
+                      <Bot className="w-12 h-12 text-zinc-800" />
+                    </div>
+                    <h2 className="text-2xl font-bold text-zinc-100">How can I help you today?</h2>
+                    <p className="mt-2 max-w-md text-zinc-500 text-sm">
+                      Ask anything about your documents or provide a prompt to start our session.
+                    </p>
+                  </div>
+                ) : (
+                  messages.map((m, i) => <ChatMessage key={i} {...m} />)
+                )}
+                <div ref={messagesEndRef} className="h-4" />
+              </div>
             </div>
 
-            {raw && (
-              <pre className="mt-4 overflow-x-auto rounded-2xl bg-black/60 p-4 text-xs text-emerald-200 ring-1 ring-white/10">
-                {raw}
-              </pre>
-            )}
-          </div>
-        ) : (
-          <ChatBoxStreamComponent debugMode={debugMode} />
+            <div className="bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent pt-10 pb-6 shrink-0">
+              <div className="mx-auto max-w-3xl px-4">
+                <form onSubmit={handleSendMessage} className="relative flex items-center rounded-2xl border border-zinc-800 bg-zinc-900/50 p-1.5 shadow-2xl focus-within:border-indigo-500/50 transition-all ring-1 ring-white/5">
+                  <input
+                    type="text"
+                    value={input}
+                    onChange={(e) => setInput(e.target.value)}
+                    disabled={isLoading}
+                    placeholder={isLoading ? "Generating response..." : "Ask a question about your docs..."}
+                    className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600"
+                  />
+                  <div className="flex items-center gap-1">
+                    {isLoading && (
+                      <button type="button" onClick={handleStop} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800 transition-colors">
+                        <StopCircle size={20} />
+                      </button>
+                    )}
+                    <button 
+                      type="submit" 
+                      disabled={!input.trim() || isLoading} 
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${!input.trim() || isLoading ? 'bg-zinc-800 text-zinc-600' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500'}`}
+                    >
+                      <Send size={18} />
+                    </button>
+                  </div>
+                </form>
+                
+                {streamError && (
+                  <div className="mt-3 flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2 text-[11px] text-red-400 ring-1 ring-red-500/20">
+                    <ShieldAlert size={12} />
+                    <span className="font-bold uppercase tracking-wider">Stream Error:</span>
+                    <span className="truncate">{streamError}</span>
+                  </div>
+                )}
+
+                <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-3">
+                  <p className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">&copy; 2026 RAG-BOT INC</p>
+                  <div className="flex gap-4">
+                     <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><ShieldCheck size={10}/> SSL Encrypted</span>
+                     <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><Globe size={10}/> Cloud Context</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </>
         )}
-      </div>
+
+        {view === 'register' && (
+          <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+            <div className="w-full max-w-md space-y-8 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-500 ring-1 ring-white/5 shadow-2xl">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
+                  <UserPlus size={32} />
+                </div>
+                <h2 className="text-3xl font-bold tracking-tight">Create Account</h2>
+                <p className="mt-2 text-sm text-zinc-500">Sign up to sync your document history across devices.</p>
+              </div>
+              <div className="space-y-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
+                  <input className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all" placeholder="name@example.com" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Password</label>
+                  <input type="password" className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all" placeholder="••••••••" />
+                </div>
+              </div>
+              <button className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all">Sign Up Now</button>
+              <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
+                By signing up, you agree to our <span className="text-zinc-400 underline cursor-pointer">Terms of Service</span>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {view === 'debug' && (
+          <div className="flex-1 p-8 overflow-y-auto">
+            <div className="mx-auto max-w-3xl space-y-6">
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-900/30 p-6 backdrop-blur-sm">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400 mb-4">
+                  <Terminal size={16} /> Backend Diagnostics
+                </h3>
+                <div className="grid grid-cols-2 gap-4">
+                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 uppercase mb-1">Health Status</p>
+                      <p className={`text-sm font-mono ${backend.status === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>{backend.status.toUpperCase()}</p>
+                   </div>
+                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                      <p className="text-[10px] text-zinc-500 uppercase mb-1">API Endpoint</p>
+                      <p className="text-sm font-mono text-zinc-300 truncate">{API_BASE}</p>
+                   </div>
+                </div>
+                
+                <div className="mt-6">
+                  <p className="text-[10px] text-zinc-500 uppercase mb-2">System Capabilities</p>
+                  <div className="flex flex-wrap gap-2">
+                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">SSE STREAMING</span>
+                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">BITNET 1.58B</span>
+                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">CHROMA DB</span>
+                  </div>
+                </div>
+
+                <button 
+                  onClick={() => window.location.reload()}
+                  className="mt-8 w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold uppercase tracking-widest transition-all text-zinc-300"
+                >
+                  Force Refresh Connection
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </main>
     </div>
   );
 }

@@ -1,91 +1,51 @@
-############################################
-# Secrets / Environment
-############################################
-.env
-.env.*
-.envrc
-*.key
-*.pem
-
-############################################
-# Node / Frontend
-############################################
+# Dependencies
 node_modules/
+.npm
+.yarn
+
+# Build outputs
 dist/
 build/
-.vite/
-npm-debug.*
-yarn-debug.*
-yarn-error.*
+*.log
 
-############################################
+# Environment
+.env
+.env.local
+.env*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
 # Python
-############################################
 __pycache__/
 *.pyc
 *.pyo
-*.pyd
 .venv/
 venv/
-
-############################################
-# RAG / Vector DB (Chroma)
-############################################
-**/.chroma/
-**/.chroma/**
-**/.chroma/**/*.sqlite3
-**/.chroma/**/*.db
-
-############################################
-# ONNX / Model Artifacts (NEVER COMMIT)
-############################################
-.onnx/
-*.onnx
-*.onnx_data
-*.bin
-*.h5
-*.model
-
-############################################
-# HuggingFace / Transformers Cache
-############################################
-.cache/
-**/.cache/
-**/huggingface/
-**/torch/
-**/.hf_cache/
-**/hf_cache/
-
-############################################
-# Project-specific generated data
-############################################
-chatbot-rag/backend/data/
-
-############################################
-# Local Models (CRITICAL — keep out of git)
-############################################
-chatbot-rag/backend/models/
-**/models/
-
-############################################
-# OS / Editor Junk
-############################################
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-.vscode/
-.idea/
-
-############################################
-# Logs
-############################################
-*.log
-node_modules/
-*.backup
 .chroma/
 .onnx/
-__pycache__/
-*.pyc
-.venv/
-.env
+
+# Backups
+*.backupchatbot-rag/backend/data/
+
+# Large model files and data
+chatbot-rag/backend/data/
+chatbot-rag/backend/.chroma/
+chatbot-rag/backend/.onnx/
+*.bin
+*.onnx
+*.safetensors
+*.h5
+*.pt
+*.pth
+
+# Build outputs
+chatbot-rag/frontend/dist/
+svelte-teen-zen/dist/

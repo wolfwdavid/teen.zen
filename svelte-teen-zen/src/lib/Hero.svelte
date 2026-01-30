@@ -23,7 +23,7 @@
         <input 
           type="email" 
           bind:value={email}
-          placeholder="Enter your email" 
+          placeholder="Enter your email/Phone number" 
           required
         />
         <button type="submit">Get Early Access</button>

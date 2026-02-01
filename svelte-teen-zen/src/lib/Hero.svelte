@@ -3,7 +3,7 @@
   
   function handleSubmit() {
     if (email) {
-      alert(`Thanks for subscribing! We'll send updates to ${email}`);
+      alert('Thanks for subscribing! We will send updates to ' + email);
       email = '';
     }
   }
@@ -29,7 +29,11 @@
         <button type="submit">Get Early Access</button>
       </form>
       
-      <p class="small-text">Free • Available on iOS & Android • Coming Soon</p>
+      <p class="login-link">
+        Already have an account? <a href="#/login">Log in</a>
+      </p>
+      
+      <p class="small-text">• Available on iOS & Android • Coming Soon</p>
     </div>
     
     <div class="hero-image">
@@ -145,6 +149,22 @@
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
   }
 
+  .login-link {
+    margin-bottom: 0.5rem;
+    font-size: 0.95rem;
+  }
+
+  .login-link a {
+    color: white;
+    text-decoration: underline;
+    font-weight: 600;
+    transition: opacity 0.3s;
+  }
+
+  .login-link a:hover {
+    opacity: 0.8;
+  }
+
   .small-text {
     font-size: 0.9rem;
     opacity: 0.8;
@@ -247,8 +267,8 @@
     }
 
     .subscribe-form input,
-    .subscribe-form button {
-      width: 100%;
+      .subscribe-form button {
+        width: 100%;
+      }
     }
-  }
-</style>
+  </style>

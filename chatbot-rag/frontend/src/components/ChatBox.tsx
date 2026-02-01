@@ -54,17 +54,21 @@ export default function ChatBox() {
         setBackend((prev) => ({ ...prev, status: "checking" }));
         const h = await healthCheck({ signal: controller.signal, timeoutMs: 8000 });
 
-        if (h?.ok) {
-          const ready = !!h.initialized && !!h.model_loaded;
+        if (h?.ok && h?.initialized && h?.model_loaded) {
           setBackend({
             status: "up",
-            detail: ready ? "Model ready" : "Backend up (warming)",
+            detail: "Model ready",
+          });
+        } else if (h?.ok) {
+          setBackend({ 
+            status: "down", 
+            detail: h?.init_error || "Model not loaded" 
           });
         } else {
-          setBackend({ status: "down", detail: "Health returned ok=false" });
+          setBackend({ status: "down", detail: "Health check failed" });
         }
       } catch (e: any) {
-        setBackend({ status: "down", detail: e?.message ?? String(e) });
+        setBackend({ status: "down", detail: e?.message ?? "Connection failed" });
       }
     }
 
@@ -152,10 +156,10 @@ export default function ChatBox() {
 
   const backendBadgeText =
     backend.status === "up"
-      ? `Backend connected ✅${backend.detail ? ` — ${backend.detail}` : ""}`
+      ? `✅ Connected — ${backend.detail || "Ready"}`
       : backend.status === "down"
-      ? `Backend offline ❌${backend.detail ? ` — ${backend.detail}` : ""}`
-      : "Checking backend…";
+      ? `❌ Offline — ${backend.detail || "Check backend"}`
+      : "⏳ Checking backend...";
 
   const backendBadgeBg =
     backend.status === "up" ? "#dcfce7" : backend.status === "down" ? "#fee2e2" : "#f3f4f6";
@@ -170,6 +174,7 @@ export default function ChatBox() {
             fontSize: 12,
             border: "1px solid #ddd",
             background: backendBadgeBg,
+            fontWeight: 500,
           }}
           title={backend.detail || ""}
         >
@@ -210,7 +215,7 @@ export default function ChatBox() {
             handleAsk();
           }
         }}
-        placeholder={backend.status === "down" ? "Backend is offline — start the server first" : "Ask me anything..."}
+        placeholder={backend.status === "down" ? "Backend offline — start server at localhost:8000" : "Ask me anything..."}
         rows={4}
         style={{ width: "100%", padding: 8 }}
         disabled={backend.status !== "up" || loading}

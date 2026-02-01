@@ -7,7 +7,7 @@ export default function ChatApp() {
   async function sendMessage() {
     if (!input.trim()) return;
 
-    // 👇 Notice we call "/chat" instead of "http://localhost:8000/chat"
+    // 👇 Notice we call "/chat" instead of "http://10.20.50.249:8000/chat"
     const res = await fetch("/chat", {
       method: "POST",
       headers: { "Content-Type": "application/json" },

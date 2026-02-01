@@ -18,7 +18,7 @@
     try {
       console.log('Sending request to backend...');
       
-      const response = await fetch('http://localhost:8000/api/send-verification-code', {
+      const response = await fetch('http://10.20.50.249:8000/api/send-verification-code', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

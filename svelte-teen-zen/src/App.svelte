@@ -8,8 +8,7 @@
   import LoginPage from './lib/LoginPage.svelte';
   import RegisterPage from './lib/RegisterPage.svelte';
   
-  // Ensure this matches your file name in src/lib/
-  import ChatPage from './lib/ChatPage.svelte'; 
+ 
 
   let currentPage = 'home';
   

@@ -1,9 +1,9 @@
 <script>
   let email = '';
   let password = '';
-  let rememberMe = false;
-  let accountRole = 'user'; // default role
+  let accountRole = 'user';
   let error = '';
+  let loading = false;
   
   function handleLogin() {
     if (!email || !password) {
@@ -11,17 +11,28 @@
       return;
     }
     
-    if (!accountRole) {
-      error = 'Please select an account role';
-      return;
-    }
-    
     // Clear any previous errors
     error = '';
+    loading = true;
     
-    // Redirect to chatbot with role parameter
-    // Update this URL to your actual chatbot URL
-    window.location.href = 'http://localhost:8000?role=' + accountRole;
+    // Redirect to chatbot registration with email and role pre-filled
+    const params = new URLSearchParams({
+      email: email,
+      role: accountRole
+    });
+    
+    // Redirect to your RAG Chatbot registration page
+    window.location.href = 'http://localhost:5174' + params.toString();
+  }
+  
+  function handleGoogleLogin() {
+    // Redirect to chatbot for Google authentication
+    window.location.href = 'http://localhost:5174/register';
+  }
+  
+  function handleSignup() {
+    // Redirect to chatbot registration
+    window.location.href = 'http://localhost:5174/register';
   }
 </script>
 
@@ -49,6 +60,7 @@
             bind:value={email}
             placeholder="your@email.com" 
             required
+            disabled={loading}
           />
         </div>
         
@@ -60,6 +72,7 @@
             bind:value={password}
             placeholder="Enter your password" 
             required
+            disabled={loading}
           />
         </div>
         
@@ -72,6 +85,7 @@
                 name="role" 
                 value="user"
                 bind:group={accountRole}
+                disabled={loading}
               />
               <span class="checkbox-custom"></span>
               <span class="role-name">User</span>
@@ -83,6 +97,7 @@
                 name="role" 
                 value="provider"
                 bind:group={accountRole}
+                disabled={loading}
               />
               <span class="checkbox-custom"></span>
               <span class="role-name">Provider</span>
@@ -92,14 +107,14 @@
         
         <div class="form-options">
           <label class="checkbox-label">
-            <input type="checkbox" bind:checked={rememberMe} />
+            <input type="checkbox" />
             <span>Remember me</span>
           </label>
           <a href="#/forgot-password" class="forgot-link">Forgot password?</a>
         </div>
         
-        <button type="submit" class="login-button">
-          Log In to Chatbot
+        <button type="submit" class="login-button" disabled={loading}>
+          {loading ? 'Redirecting...' : 'Log In to Chatbot'}
         </button>
       </form>
       
@@ -108,7 +123,7 @@
       </div>
       
       <div class="social-login">
-        <button type="button" class="social-button google">
+        <button type="button" class="social-button google" on:click={handleGoogleLogin}>
           <svg width="20" height="20" viewBox="0 0 20 20">
             <path fill="#4285F4" d="M19.6 10.23c0-.82-.1-1.42-.25-2.05H10v3.72h5.5c-.15.96-.74 2.31-2.04 3.22v2.45h3.16c1.89-1.73 2.98-4.3 2.98-7.34z"/>
             <path fill="#34A853" d="M13.46 15.13c-.83.59-1.96 1-3.46 1-2.64 0-4.88-1.74-5.68-4.15H1.07v2.52C2.72 17.75 6.09 20 10 20c2.7 0 4.96-.89 6.62-2.42l-3.16-2.45z"/>
@@ -120,7 +135,7 @@
       </div>
       
       <p class="signup-prompt">
-        Don't have an account? <a href="#/ChatPage.svelte" class="signup-link">Sign up</a>
+        Don't have an account? <button type="button" class="signup-link" on:click={handleSignup}>Sign up</button>
       </p>
     </div>
   </div>
@@ -328,9 +343,14 @@
     margin-top: 0.5rem;
   }
 
-  .login-button:hover {
+  .login-button:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 10px 30px rgba(102, 126, 234, 0.3);
+  }
+
+  .login-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .divider {
@@ -398,9 +418,14 @@
   }
 
   .signup-link {
+    background: none;
+    border: none;
     color: #667eea;
     text-decoration: none;
     font-weight: 600;
+    cursor: pointer;
+    font-size: 0.95rem;
+    padding: 0;
   }
 
   .signup-link:hover {
@@ -420,10 +445,6 @@
       flex-direction: column;
       align-items: flex-start;
       gap: 0.75rem;
-    }
-
-    .role-options-inline {
-      gap: 1.5rem;
     }
   }
 </style>

@@ -227,6 +227,7 @@ def health():
         'rag_chain_is_none': chain_v2.rag_chain is None,
         'retriever_is_none': chain_v2.retriever is None,
         'vectorstore_is_none': vectorstore_is_none,
+        
     }
 
 

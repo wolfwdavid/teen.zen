@@ -6,17 +6,24 @@
   import CTA from './lib/CTA.svelte';
   import Footer from './lib/Footer.svelte';
   import LoginPage from './lib/LoginPage.svelte';
+  import RegisterPage from './lib/RegisterPage.svelte';
 
   // Simple hash-based routing
   let currentPage = 'home';
   
   function handleHashChange() {
     const hash = window.location.hash;
+    console.log('Hash changed to:', hash);
+    
     if (hash === '#/login') {
       currentPage = 'login';
+    } else if (hash.startsWith('#/register')) {
+      currentPage = 'register';
     } else {
       currentPage = 'home';
     }
+    
+    console.log('Current page:', currentPage);
   }
   
   // Listen for hash changes
@@ -37,6 +44,8 @@
   </main>
 {:else if currentPage === 'login'}
   <LoginPage />
+{:else if currentPage === 'register'}
+  <RegisterPage />
 {/if}
 
 <style>

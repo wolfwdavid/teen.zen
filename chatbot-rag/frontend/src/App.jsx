@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 // --- Configuration ---
-const API_BASE = "http://localhost:8000";
+const API_BASE = "http://10.20.50.249:8000";
 
 // --- Helpers ---
 function joinUrl(base, path) {

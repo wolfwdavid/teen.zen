@@ -21,7 +21,7 @@
   // --- 1. Health Check Logic ---
   async function checkBackendHealth() {
     try {
-      const res = await fetch('http://localhost:8000/health');
+      const res = await fetch('http://10.20.50.249:8000/api/health');
       status = res.ok ? "ONLINE" : "OFFLINE";
     } catch (e) {
       status = "OFFLINE";
@@ -73,7 +73,7 @@
     if (!email) { error = 'Please enter your email'; return; }
     loading = true;
     try {
-      const response = await fetch('http://localhost:8000/api/send-verification-code', {
+      const response = await fetch('http://10.20.50.249:8000/api/send-verification-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email })
@@ -98,7 +98,7 @@
     error = '';
     loading = true;
     try {
-      const response = await fetch('http://localhost:8000/api/verify-code', {
+      const response = await fetch('http://10.20.50.249:8000/api/verify-code', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email, code: verificationCode.trim() })
@@ -127,7 +127,7 @@
     }
     loading = true;
     try {
-      const response = await fetch('http://localhost:8000/api/register', {
+      const response = await fetch('http://10.20.50.249:8000/api/register', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({

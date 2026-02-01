@@ -58,9 +58,9 @@ npm run dev
 ```
 
 4) Debugging quick checks:
-- Curl health: `curl -sS http://localhost:8000/health`
-- Trigger reindex: `curl -X POST http://localhost:8000/reindex`
-- POST chat (non-streaming): `curl -X POST -H 'Content-Type: application/json' -d '{"question":"hi"}' http://localhost:8000/chat`
+- Curl health: `curl -sS http://10.20.50.249:8000/health`
+- Trigger reindex: `curl -X POSThttp://10.20.50.249:8000/reindex`
+- POST chat (non-streaming): `curl -X POST -H 'Content-Type: application/json' -d '{"question":"hi"}' http://10.20.50.249:8000/chat`
 
 ## Project-specific patterns & conventions
 - SSE streaming contract: backend sends JSON lines via SSE with these `type` keys:

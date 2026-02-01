@@ -22,3 +22,16 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Environments
+.venv/
+node_modules/
+__pycache__/
+
+# Sensitive Data
+users.json
+verification_codes.json
+.env
+
+# OS files
+.DS_StoreS

@@ -5,63 +5,58 @@ import random
 from datetime import datetime, timedelta
 from typing import Optional
 from jose import JWTError, jwt
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from dotenv import load_dotenv
 
-# --- 1. APP INITIALIZATION & CORS ---
-app = FastAPI()
+# Load variables from .env file if it exists
+load_dotenv()
 
-# Added port 5174 and 5175 to cover both common Svelte/Vite ports
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5175", "http://localhost:5174"], 
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# --- 2. AUTH SETTINGS ---
-# Initialize CryptContext here to fix the NameError
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-
-SECRET_KEY = "your-secret-key-change-this-in-production"
+# --- 1. AUTH SETTINGS ---
+# Updated to use your requested fallback logic
+SECRET_KEY = os.getenv("JWT_SECRET", "fallback-key-for-dev")
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
 USERS_FILE = "users.json"
 
+# Initialize CryptContext for secure password hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 # Temporary storage for verification codes
 verification_codes = {}
 
-# --- 3. VERIFICATION HELPERS ---
+# --- 2. VERIFICATION HELPERS ---
 
 def generate_verification_code(email: str = None):
+    """Generates a random 6-digit code."""
     return str(random.randint(100000, 999999))
 
 def send_verification_email(email: str, code: str):
+    """Stores the code and prints it to the terminal for development."""
     verification_codes[email] = code
     print(f"\n[EMAIL SIMULATION] To: {email} | Code: {code}\n")
     return True
 
 def verify_code(email: str, code: str):
+    """Checks if the provided code matches the one stored."""
     stored_code = verification_codes.get(email)
     if stored_code and stored_code == code:
         del verification_codes[email]
         return True
     return False
 
-# --- 4. PASSWORD HELPERS (UPDATED) ---
+# --- 3. PASSWORD HELPERS ---
 
 def get_password_hash(password: str) -> str:
-    """Uses pwd_context to hash the password."""
+    """Hashes a plain-text password."""
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Uses pwd_context to verify the password."""
+    """Verifies a plain-text password against a stored hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
-# --- 5. DATA PERSISTENCE ---
+# --- 4. DATA PERSISTENCE ---
 
 def load_users():
+    """Loads users from the JSON file."""
     if os.path.exists(USERS_FILE):
         with open(USERS_FILE, 'r') as f:
             try:
@@ -71,12 +66,14 @@ def load_users():
     return {}
 
 def save_users(users):
+    """Saves the user dictionary to the JSON file."""
     with open(USERS_FILE, 'w') as f:
         json.dump(users, f, indent=2)
 
-# --- 6. CORE AUTH LOGIC ---
+# --- 5. CORE AUTH LOGIC ---
 
 def create_user(email: str, password: str, role: str = "user"):
+    """Validates and saves a new user to users.json."""
     users = load_users()
     if email in users:
         return None
@@ -91,6 +88,7 @@ def create_user(email: str, password: str, role: str = "user"):
     return {"email": email, "role": role}
 
 def authenticate_user(email: str, password: str):
+    """Checks credentials for login."""
     users = load_users()
     if email not in users:
         return None
@@ -101,6 +99,7 @@ def authenticate_user(email: str, password: str):
     return {"email": email, "role": user["role"]}
 
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    """Generates a JWT token for the session."""
     to_encode = data.copy()
     expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
     to_encode.update({"exp": expire})

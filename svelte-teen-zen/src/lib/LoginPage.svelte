@@ -22,17 +22,17 @@
     });
     
     // Redirect to your RAG Chatbot registration page
-    window.location.href = 'http://localhost:5174' + params.toString();
+    window.location.href = 'http://localhost:5173' + params.toString();
   }
   
   function handleGoogleLogin() {
     // Redirect to chatbot for Google authentication
-    window.location.href = 'http://localhost:5174/register';
+    window.location.href = 'http://localhost:5173/register';
   }
   
   function handleSignup() {
     // Redirect to chatbot registration
-    window.location.href = 'http://localhost:5174/register';
+    window.location.href = 'http://localhost:5173/register';
   }
 </script>
 

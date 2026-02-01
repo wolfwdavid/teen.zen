@@ -122,7 +122,7 @@ export function chatStreamUrl(
   question: string,
   opts?: { k?: number; debug?: 0 | 1; heartbeat?: number }
 ) {
-  return buildUrl(API_BASE, "/chat/stream", {
+  return buildUrl(API_BASE, "/api/chat/stream", {
     q: question,
     k: opts?.k ?? 3,
     debug: opts?.debug ?? 0,

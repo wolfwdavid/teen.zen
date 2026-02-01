@@ -152,7 +152,7 @@ export default function App() {
     const ac = new AbortController();
     streamAbortRef.current = ac;
 
-    const apiUrl = joinUrl(API_BASE, "/chat/stream") + `?q=${encodeURIComponent(userQuery)}`;
+    const apiUrl = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(userQuery)}`;
 
     try {
       const response = await fetch(apiUrl, { signal: ac.signal });

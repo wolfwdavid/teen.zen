@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+﻿import React, { useState, useEffect, useRef } from 'react';
 import { 
   Check, 
   X, 
@@ -18,7 +18,7 @@ import {
 } from 'lucide-react';
 
 // --- Configuration ---
-const API_BASE = "http://10.20.50.249:8000";
+import API_BASE from "./api/apiBase";
 
 // --- Helpers ---
 function joinUrl(base, path) {
@@ -358,7 +358,7 @@ export default function App() {
                     <input 
                       type={showPassword ? "text" : "password"} 
                       className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all" 
-                      placeholder="••••••••" 
+                      placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" 
                     />
                     <button 
                       type="button"

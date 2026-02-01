@@ -22,7 +22,7 @@ export default function ChatApp() {
     endRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
   }, [messages]);
 
-  const streamUrl = useMemo(() => (q: string) => `/chat/stream?q=${encodeURIComponent(q)}`, []);
+  const streamUrl = useMemo(() => (q: string) => `/api/chat/stream?question=${encodeURIComponent(q)}`, []);
 
   const ask = async () => {
     const question = input.trim();

@@ -40,7 +40,7 @@ export default function ChatBoxStream() {
     setStreaming(true);
 
     // ✅ ABSOLUTE URL (required for Android/Capacitor)
-    const url = joinUrl(API_BASE, "/chat/stream") + `?q=${encodeURIComponent(q.trim())}&k=3&heartbeat=2`;
+    const url = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(q.trim())}&k=3&heartbeat=2`;
 
     let es;
     try {

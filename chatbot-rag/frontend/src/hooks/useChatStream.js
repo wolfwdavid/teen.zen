@@ -20,7 +20,7 @@ export function useChatStreamTyping(speed = 30) {
     setRawBuffer("");
     setError("");
 
-    const url = `/chat/stream?q=${encodeURIComponent(question)}`;
+    const url = `/api/chat/stream?question=${encodeURIComponent(question)}`;
     const es = new EventSource(url);
     esRef.current = es;
     setOpen(true);

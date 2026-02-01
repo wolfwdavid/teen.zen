@@ -14,7 +14,7 @@ from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr
 from dotenv import load_dotenv
 
-# Import authentication functions from our fixed auth.py
+# Import authentication functions
 from auth import (
     create_user, 
     authenticate_user, 
@@ -28,37 +28,27 @@ from auth import (
 
 load_dotenv()
 
-import chain_v2  # import the module
+# Ensure chain_v2 has an 'ask' or 'get_response' function
+import chain_v2  
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('api_v2')
 
 app = FastAPI(title='RAG Chatbot – V2')
 
-# ------------------------------------------------------------------------------
-# CORS (Updated to specifically allow your Svelte port 5174)
-# ------------------------------------------------------------------------------
+# --- CORS Setup ---
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://localhost:5175",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-        "http://127.0.0.1:5175",
-    ],
+    allow_origins=["*"], # For development; narrow this down for production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# ------------------------------------------------------------------------------
-# Models
-# ------------------------------------------------------------------------------
+# --- Models ---
 class ChatRequest(BaseModel):
     question: str
-    k: Optional[int] = None
+    k: Optional[int] = 3
 
 class SendCodeRequest(BaseModel):
     email: EmailStr
@@ -75,7 +65,6 @@ class UserRegister(BaseModel):
 class UserLogin(BaseModel):
     email: EmailStr
     password: str
-    role: str = 'user'
 
 class Token(BaseModel):
     access_token: str
@@ -83,65 +72,37 @@ class Token(BaseModel):
     email: str
     role: str
 
-# ------------------------------------------------------------------------------
-# Health Check (Crucial for turning the red dot GREEN)
-# ------------------------------------------------------------------------------
+# --- Endpoints ---
+
 @app.get('/health')
 def health():
-    # We return "status": "online" because your frontend checks for this specific key
-    return {
-        'status': 'online',
-        'initialized': getattr(chain_v2.state, 'initialized', False),
-        'model_loaded': getattr(chain_v2.state, 'model_loaded', False),
-        'rag_ready': chain_v2.rag_chain is not None
-    }
+    return {"status": "online"}
 
-# ------------------------------------------------------------------------------
-# Verification Code Endpoints
-# ------------------------------------------------------------------------------
 @app.post('/api/send-verification-code')
 async def send_code(req: SendCodeRequest):
     users = load_users()
     if req.email in users:
         raise HTTPException(status_code=400, detail='Email already registered')
-    
     code = generate_verification_code(req.email)
-    success = send_verification_email(req.email, code)
-    
-    # Check your Python terminal for this code!
+    send_verification_email(req.email, code)
     logger.info('--- VERIFICATION CODE FOR %s: %s ---', req.email, code)
-    
-    return {
-        'message': 'Verification code sent', 
-        'expires_in': 300,
-        'dev_mode': True 
-    }
+    return {'message': 'Verification code sent'}
 
 @app.post('/api/verify-code')
 async def verify_verification_code(req: VerifyCodeRequest):
-    is_valid = verify_code(req.email, req.code)
-    if not is_valid:
+    if not verify_code(req.email, req.code):
         raise HTTPException(status_code=400, detail='Invalid or expired code')
-    
-    return {'message': 'Code verified successfully', 'email': req.email}
+    return {'message': 'Code verified successfully'}
 
-# ------------------------------------------------------------------------------
-# Authentication Endpoints
-# ------------------------------------------------------------------------------
 @app.post('/api/register')
 async def register(user: UserRegister):
     if len(user.password) < 8:
-        raise HTTPException(status_code=400, detail='Password must be at least 8 characters')
-    
-    result = create_user(user.email, user.password, user.role)
-    if not result:
+        raise HTTPException(status_code=400, detail='Password too short')
+    if not create_user(user.email, user.password, user.role):
         raise HTTPException(status_code=400, detail='User already exists')
     
-    # Create token so the user is logged in immediately after signing up
     access_token = create_access_token(data={'sub': user.email, 'role': user.role})
-    
     return {
-        'message': 'User created', 
         'access_token': access_token, 
         'token_type': 'bearer',
         'email': user.email,
@@ -155,7 +116,6 @@ async def login(user: UserLogin):
         raise HTTPException(status_code=401, detail='Invalid credentials')
     
     access_token = create_access_token(data={'sub': user.email, 'role': auth_user['role']})
-    
     return {
         'access_token': access_token,
         'token_type': 'bearer',
@@ -163,4 +123,26 @@ async def login(user: UserLogin):
         'role': auth_user['role']
     }
 
-# ... [The /chat and /chat/stream logic remains the same below] ...
+# --- Chat Interaction Endpoint ---
+@app.post('/api/chat')
+async def chat(req: ChatRequest):
+    try:
+        # Assuming chain_v2 has a function named 'query' or similar
+        # Update 'chain_v2.query' to whatever your function is named
+        answer = chain_v2.query(req.question, k=req.k) 
+        return {"answer": answer}
+    except Exception as e:
+        logger.error(f"Chat error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Internal chatbot error")
+
+@app.get('/api/chat/stream')
+async def chat_stream(question: str = Query(...)):
+    async def event_generator():
+        try:
+            # Assuming chain_v2 supports streaming
+            for chunk in chain_v2.stream_query(question):
+                yield f"data: {json.dumps({'text': chunk})}\n\n"
+        except Exception as e:
+            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+    
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

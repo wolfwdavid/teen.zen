@@ -3,7 +3,7 @@ import type { CapacitorConfig } from "@capacitor/cli";
 // Optional dev-only live reload / external hosting (leave empty for Play Store builds)
 const CAP_SERVER_URL = (process.env.CAP_SERVER_URL || "").trim();
 
-// Enable HTTP during dev ONLY (Android emulator -> http://localhost:8000)
+// Enable HTTP during dev ONLY (Android emulator -> http://10.20.50.249:8000)
 const DEV_ALLOW_HTTP = (process.env.CAP_DEV_ALLOW_HTTP || "").trim() === "1";
 
 // Your emulator backend host (Android) - changed to localhost for ADB reverse proxy

@@ -6,6 +6,12 @@
   let loading = false;
   
   function handleLogin() {
+    // Check if running on GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+      alert('The chatbot requires a local backend server. Please run the app locally to use the chatbot.');
+      return;
+    }
+
     if (!email || !password) {
       error = 'Please enter both email and password';
       return;
@@ -22,17 +28,27 @@
     });
     
     // Redirect to your RAG Chatbot registration page
-    window.location.href = 'http://localhost:5173' + params.toString();
+    window.location.href = 'http://localhost:5173/?' + params.toString();
   }
   
   function handleGoogleLogin() {
+    // Check if running on GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+      alert('The chatbot requires a local backend server. Please run the app locally to use the chatbot.');
+      return;
+    }
     // Redirect to chatbot for Google authentication
-    window.location.href = 'http://localhost:5173/register';
+    window.location.href = 'http://localhost:5173/';
   }
   
   function handleSignup() {
+    // Check if running on GitHub Pages
+    if (window.location.hostname.includes('github.io')) {
+      alert('The chatbot requires a local backend server. Please run the app locally to use the chatbot.');
+      return;
+    }
     // Redirect to chatbot registration
-    window.location.href = 'http://localhost:5173/register';
+    window.location.href = 'http://localhost:5173/';
   }
 </script>
 

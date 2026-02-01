@@ -172,11 +172,12 @@ async def chat_stream(question: str = Query(...)):
             answer = chain_v2.rag_chain.invoke(question)
             print(f"✅ [Stream] Got answer: {answer[:100]}...")
             
-            yield f"data: {json.dumps({'text': answer})}\n\n"
+            yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
             print("📤 [Stream] Sent response")
         except Exception as e:
             print(f"💥 [Stream] Error: {str(e)}")
             logger.error(f"Stream error: {str(e)}", exc_info=True)
-            yield f"data: {json.dumps({'error': str(e)})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     
     return StreamingResponse(event_generator(), media_type="text/event-stream")

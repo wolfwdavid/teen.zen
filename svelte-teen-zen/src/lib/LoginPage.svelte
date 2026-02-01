@@ -120,7 +120,7 @@
       </div>
       
       <p class="signup-prompt">
-        Don't have an account? <a href="#/register" class="signup-link">Sign up</a>
+        Don't have an account? <a href="#/ChatPage.svelte" class="signup-link">Sign up</a>
       </p>
     </div>
   </div>

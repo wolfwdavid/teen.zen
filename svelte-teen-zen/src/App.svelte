@@ -7,29 +7,30 @@
   import Footer from './lib/Footer.svelte';
   import LoginPage from './lib/LoginPage.svelte';
   import RegisterPage from './lib/RegisterPage.svelte';
+  
+  // Ensure this matches your file name in src/lib/
+  import ChatPage from './lib/ChatPage.svelte'; 
 
-  // Simple hash-based routing
   let currentPage = 'home';
   
   function handleHashChange() {
     const hash = window.location.hash;
-    console.log('Hash changed to:', hash);
-    
-    if (hash === '#/login') {
+    console.log("Current Hash:", hash); // Add this to debug in your browser console
+
+    if (hash.includes('/chat')) {
+      currentPage = 'chat';
+    } else if (hash.includes('/login')) {
       currentPage = 'login';
-    } else if (hash.startsWith('#/register')) {
+    } else if (hash.includes('/register')) {
       currentPage = 'register';
     } else {
       currentPage = 'home';
     }
-    
-    console.log('Current page:', currentPage);
   }
   
-  // Listen for hash changes
   if (typeof window !== 'undefined') {
     window.addEventListener('hashchange', handleHashChange);
-    handleHashChange(); // Check initial hash
+    handleHashChange();
   }
 </script>
 
@@ -46,11 +47,10 @@
   <LoginPage />
 {:else if currentPage === 'register'}
   <RegisterPage />
+{:else if currentPage === 'chat'}
+  <ChatPage />
 {/if}
 
 <style>
-  main {
-    width: 100%;
-    overflow-x: hidden;
-  }
+  main { width: 100%; overflow-x: hidden; }
 </style>

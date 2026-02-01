@@ -1,10 +1,57 @@
 <script>
   let email = '';
+  let loading = false;
+  let message = '';
+  let messageType = ''; // 'success' or 'error'
   
-  function handleSubmit() {
-    if (email) {
-      alert('Thanks for subscribing! We will send updates to ' + email);
-      email = '';
+  async function handleSubmit() {
+    console.log('handleSubmit called with email:', email);
+    
+    if (!email) {
+      console.log('No email entered');
+      return;
+    }
+    
+    loading = true;
+    message = '';
+    
+    try {
+      console.log('Sending request to backend...');
+      
+      const response = await fetch('http://localhost:8000/api/send-verification-code', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ email: email })
+      });
+      
+      const data = await response.json();
+      console.log('Backend response:', data);
+      
+      if (response.ok) {
+        messageType = 'success';
+        message = 'Verification code sent! Redirecting...';
+        
+        console.log('Success! Redirecting in 2 seconds...');
+        
+        // Redirect to register page with email pre-filled
+        setTimeout(() => {
+          const redirectUrl = '#/register?email=' + encodeURIComponent(email);
+          console.log('Redirecting to:', redirectUrl);
+          window.location.hash = redirectUrl;
+        }, 2000);
+      } else {
+        messageType = 'error';
+        message = data.detail || 'Failed to send verification code';
+        console.error('Backend error:', data);
+      }
+    } catch (err) {
+      messageType = 'error';
+      message = 'Network error. Please make sure the backend is running.';
+      console.error('Network error:', err);
+    } finally {
+      loading = false;
     }
   }
 </script>
@@ -19,21 +66,30 @@
         Join thousands of teens taking control of their mental well-being.
       </p>
       
+      {#if message}
+        <div class="message" class:success={messageType === 'success'} class:error={messageType === 'error'}>
+          {message}
+        </div>
+      {/if}
+      
       <form on:submit|preventDefault={handleSubmit} class="subscribe-form">
         <input 
           type="email" 
           bind:value={email}
-          placeholder="Enter your email/Phone number" 
+          placeholder="Enter your email" 
           required
+          disabled={loading}
         />
-        <button type="submit">Get Early Access</button>
+        <button type="submit" disabled={loading}>
+          {loading ? 'Sending...' : 'Get Early Access'}
+        </button>
       </form>
       
       <p class="login-link">
         Already have an account? <a href="#/login">Log in</a>
       </p>
       
-      <p class="small-text">• Available on iOS & Android • Coming Soon</p>
+      <p class="small-text">Free • Available on iOS & Android • Coming Soon</p>
     </div>
     
     <div class="hero-image">
@@ -115,6 +171,35 @@
     opacity: 0.95;
   }
 
+  .message {
+    padding: 1rem 1.5rem;
+    border-radius: 10px;
+    margin-bottom: 1.5rem;
+    font-weight: 500;
+    animation: slideIn 0.3s ease-out;
+  }
+
+  .message.success {
+    background: rgba(76, 175, 80, 0.2);
+    border: 1px solid rgba(76, 175, 80, 0.5);
+  }
+
+  .message.error {
+    background: rgba(244, 67, 54, 0.2);
+    border: 1px solid rgba(244, 67, 54, 0.5);
+  }
+
+  @keyframes slideIn {
+    from {
+      opacity: 0;
+      transform: translateY(-10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   .subscribe-form {
     display: flex;
     gap: 1rem;
@@ -132,6 +217,11 @@
     outline: none;
   }
 
+  .subscribe-form input:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+  }
+
   .subscribe-form button {
     padding: 1rem 2.5rem;
     background: #ff6b6b;
@@ -144,9 +234,14 @@
     transition: transform 0.2s, box-shadow 0.2s;
   }
 
-  .subscribe-form button:hover {
+  .subscribe-form button:hover:not(:disabled) {
     transform: translateY(-2px);
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+  }
+
+  .subscribe-form button:disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
   }
 
   .login-link {
@@ -267,8 +362,8 @@
     }
 
     .subscribe-form input,
-      .subscribe-form button {
-        width: 100%;
-      }
+    .subscribe-form button {
+      width: 100%;
     }
-  </style>
+  }
+</style>

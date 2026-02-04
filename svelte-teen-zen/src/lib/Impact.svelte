@@ -26,7 +26,7 @@
     <div class="impact-content">
       <h3>Our Mission</h3>
       <p>
-        Teen.zen aims to significantly improve the mental health of teenagers by offering 
+        Teen Zen aims to significantly improve the mental health of teenagers by offering 
         accessible, scientifically-backed tools. We focus on early intervention, promoting 
         awareness, and creating a supportive community while addressing barriers such as 
         stigma, cultural diversity, and accessibility.

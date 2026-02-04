@@ -1,6 +1,6 @@
 # Teen.zen Website - Svelte Version
 
-A modern, responsive landing page for the Teen.zen mental health app built with Svelte.
+A modern, responsive landing page for the Teen Zen mental health app built with Svelte.
 
 ## Features
 
@@ -144,7 +144,7 @@ Edit the component files in `src/lib/` to change:
 - Footer links
 
 ### Base URL
-If your repo name is different from `teen.zen`, update `vite.config.js`:
+If your repo name is different from `Teen Zen`, update `vite.config.js`:
 ```js
 base: '/your-repo-name/'
 ```

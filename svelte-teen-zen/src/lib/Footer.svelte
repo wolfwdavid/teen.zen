@@ -6,27 +6,27 @@
   <div class="container">
     <div class="footer-content">
       <div class="footer-section">
-        <h3>Teen.zen</h3>
+        <h3>Teen Zen</h3>
         <p>Empowering teenagers to take control of their mental well-being.</p>
         <div class="social-links">
-          <a href="#" aria-label="Twitter">
+          <a href="/" aria-label="Twitter">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
               <path d="M23 3a10.9 10.9 0 01-3.14 1.53 4.48 4.48 0 00-7.86 3v1A10.66 10.66 0 013 4s-4 9 5 13a11.64 11.64 0 01-7 2c9 5 20 0 20-11.5a4.5 4.5 0 00-.08-.83A7.72 7.72 0 0023 3z"/>
             </svg>
           </a>
-          <a href="#" aria-label="Instagram">
+          <a href="/" aria-label="Instagram">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
               <rect x="2" y="2" width="20" height="20" rx="5" ry="5"/>
               <path d="M16 11.37A4 4 0 1112.63 8 4 4 0 0116 11.37z"/>
               <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
             </svg>
           </a>
-          <a href="#" aria-label="Facebook">
+          <a href="/" aria-label="Facebook">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
               <path d="M18 2h-3a5 5 0 00-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 011-1h3z"/>
             </svg>
           </a>
-          <a href="#" aria-label="linkedin">
+          <a href="/" aria-label="linkedin">
             <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor">
               <path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433c-1.144 0-2.063-.926-2.063-2.065 0-1.138.92-2.063 2.063-2.063 1.14 0 2.064.925 2.064 2.063 0 1.139-.925 2.065-2.064 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/>
             <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/>
@@ -66,7 +66,7 @@
     </div>
     
     <div class="footer-bottom">
-      <p>&copy; {currentYear} Teen.zen. All rights reserved.</p>
+      <p>&copy; {currentYear} Teen Zen. All rights reserved.</p>
       <p class="disclaimer">
         This app is not a substitute for professional mental health care. 
         If you're in crisis, please contact a mental health professional or call 988.

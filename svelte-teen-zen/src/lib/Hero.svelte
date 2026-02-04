@@ -59,7 +59,7 @@
 <section class="hero">
   <div class="container">
     <div class="hero-content">
-      <h1>Teen.zen</h1>
+      <h1>Teen Zen</h1>
       <p class="tagline">Your Mental Health Companion</p>
       <p class="description">
         Empower yourself to manage stress, anxiety, and negative thoughts. 

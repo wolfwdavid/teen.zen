@@ -3,7 +3,7 @@
   
   function handleSubmit() {
     if (email) {
-      alert(`Thanks! We'll notify you at ${email} when Teen.zen launches.`);
+      alert(`Thanks! We'll notify you at ${email} when Teen Zen launches.`);
       email = '';
     }
   }
@@ -13,7 +13,7 @@
   <div class="container">
     <div class="cta-content">
       <h2>Ready to Start Your Journey?</h2>
-      <p>Join the waitlist and be the first to know when Teen.zen launches.</p>
+      <p>Join the waitlist and be the first to know when Teen Zen launches.</p>
       
       <form on:submit|preventDefault={handleSubmit} class="cta-form">
         <input 

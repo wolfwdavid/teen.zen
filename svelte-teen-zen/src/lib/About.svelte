@@ -1,7 +1,7 @@
 <section class="about">
   <div class="container">
     <div class="about-content">
-      <h2>Why Teen.zen?</h2>
+      <h2>Why Teen Zen?</h2>
       <p class="lead">
         Mental health challenges affect a significant percentage of adolescents. 
         Early intervention is critical for improving outcomes.

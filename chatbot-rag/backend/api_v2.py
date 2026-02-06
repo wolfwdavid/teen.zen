@@ -3,16 +3,23 @@ import logging
 import json
 import chain_v2 # The core module
 from typing import Optional
+from datetime import timedelta
 from fastapi import FastAPI, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, EmailStr
-from dotenv import load_dotenv
+from pydantic import BaseModel, EmailStr, validator
+from auth import create_user, authenticate_user, verify_email_token, create_access_token, ACCESS_TOKEN_EXPIRE_MINUTES
+from dotenv import load_dotenv 
+from datetime import timedelta
 
 # Import auth logic
 from auth import (
-    create_user, authenticate_user, create_access_token, 
-    generate_verification_code, send_verification_email, verify_code, load_users
+    create_user,
+    authenticate_user,
+    verify_email_token,
+    create_access_token,
+    ACCESS_TOKEN_EXPIRE_MINUTES,
+    get_user_by_email
 )
 
 load_dotenv()
@@ -65,6 +72,113 @@ class Token(BaseModel):
     token_type: str
     email: str
     role: str
+class RegisterRequest(BaseModel):
+    username: str
+    email: EmailStr
+    password: str
+    confirm_password: str
+    age: int
+    phone: Optional[str] = None
+    
+    @validator('username')
+    def username_valid(cls, v):
+        if len(v) < 3:
+            raise ValueError('Username must be at least 3 characters')
+        if not v.isalnum():
+            raise ValueError('Username must be alphanumeric')
+        return v
+    
+    @validator('password')
+    def password_strong(cls, v):
+        if len(v) < 8:
+            raise ValueError('Password must be at least 8 characters')
+        return v
+    
+    @validator('confirm_password')
+    def passwords_match(cls, v, values):
+        if 'password' in values and v != values['password']:
+            raise ValueError('Passwords do not match')
+        return v
+    
+    @validator('age')
+    def age_valid(cls, v):
+        if v < 13:
+            raise ValueError('Must be at least 13 years old')
+        if v > 120:
+            raise ValueError('Invalid age')
+        return v
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+@app.post("/api/auth/register")
+async def register(request: RegisterRequest):
+    """Register a new user"""
+    try:
+        user = create_user(
+            username=request.username,
+            email=request.email,
+            password=request.password,
+            age=request.age,
+            phone=request.phone
+        )
+        
+        # TODO: Send verification email here
+        # For now, we'll just return the token (remove in production!)
+        
+        return {
+            "success": True,
+            "message": "Registration successful! Please check your email to verify your account.",
+            "user": {
+                "id": user['id'],
+                "username": user['username'],
+                "email": user['email']
+            },
+            "verification_token": user['verification_token']  # Remove in production!
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail="Registration failed")
+
+@app.post("/api/auth/login")
+async def login(request: LoginRequest):
+    """Login user and return JWT token"""
+    user = authenticate_user(request.email, request.password)
+    
+    if not user:
+        raise HTTPException(status_code=401, detail="Invalid email or password")
+    
+    if not user['email_verified']:
+        raise HTTPException(status_code=403, detail="Please verify your email first")
+    
+    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    access_token = create_access_token(
+        data={"sub": user['email'], "user_id": user['id']},
+        expires_delta=access_token_expires
+    )
+    
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": user['id'],
+            "username": user['username'],
+            "email": user['email']
+        }
+    }
+
+@app.get("/api/auth/verify-email/{token}")
+async def verify_email(token: str):
+    """Verify user email with token"""
+    success = verify_email_token(token)
+    
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    
+    return {"success": True, "message": "Email verified successfully!"}
+
 
 # --- ENDPOINTS ---
 

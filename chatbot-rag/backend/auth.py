@@ -1,106 +1,113 @@
 from passlib.context import CryptContext
-import json
-import os
-import random
 from datetime import datetime, timedelta
-from typing import Optional
 from jose import JWTError, jwt
-from dotenv import load_dotenv
+from typing import Optional
+import sqlite3
+from pathlib import Path
+import secrets
 
-# Load variables from .env file if it exists
-load_dotenv()
-
-# --- 1. AUTH SETTINGS ---
-# Updated to use your requested fallback logic
-SECRET_KEY = os.getenv("JWT_SECRET", "fallback-key-for-dev")
+# Configuration
+SECRET_KEY = "JWT_SECRET", "fallback-key-for-dev"  # Change this!
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 30
-USERS_FILE = "users.json"
 
-# Initialize CryptContext for secure password hashing
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+DB_PATH = Path(__file__).parent / "users.db"
 
-# Temporary storage for verification codes
-verification_codes = {}
+def get_db_connection():
+    conn = sqlite3.connect(DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
 
-# --- 2. VERIFICATION HELPERS ---
-
-def generate_verification_code(email: str = None):
-    """Generates a random 6-digit code."""
-    return str(random.randint(100000, 999999))
-
-def send_verification_email(email: str, code: str):
-    """Stores the code and prints it to the terminal for development."""
-    verification_codes[email] = code
-    print(f"\n[EMAIL SIMULATION] To: {email} | Code: {code}\n")
-    return True
-
-def verify_code(email: str, code: str):
-    """Checks if the provided code matches the one stored."""
-    stored_code = verification_codes.get(email)
-    if stored_code and stored_code == code:
-        del verification_codes[email]
-        return True
-    return False
-
-# --- 3. PASSWORD HELPERS ---
-
-def get_password_hash(password: str) -> str:
-    """Hashes a plain-text password."""
+def hash_password(password: str) -> str:
     return pwd_context.hash(password)
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Verifies a plain-text password against a stored hash."""
     return pwd_context.verify(plain_password, hashed_password)
 
-# --- 4. DATA PERSISTENCE ---
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+    to_encode = data.copy()
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=15)
+    to_encode.update({"exp": expire})
+    encoded_jwt = jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    return encoded_jwt
 
-def load_users():
-    """Loads users from the JSON file."""
-    if os.path.exists(USERS_FILE):
-        with open(USERS_FILE, 'r') as f:
-            try:
-                return json.load(f)
-            except json.JSONDecodeError:
-                return {}
-    return {}
-
-def save_users(users):
-    """Saves the user dictionary to the JSON file."""
-    with open(USERS_FILE, 'w') as f:
-        json.dump(users, f, indent=2)
-
-# --- 5. CORE AUTH LOGIC ---
-
-def create_user(email: str, password: str, role: str = "user"):
-    """Validates and saves a new user to users.json."""
-    users = load_users()
-    if email in users:
-        return None
+def create_user(username: str, email: str, password: str, age: Optional[int] = None, phone: Optional[str] = None):
+    """Create a new user with email verification token"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
     
-    users[email] = {
-        "email": email,
-        "hashed_password": get_password_hash(password),
-        "role": role,
-        "created_at": datetime.now().isoformat()
-    }
-    save_users(users)
-    return {"email": email, "role": role}
+    try:
+        password_hash = hash_password(password)
+        verification_token = secrets.token_urlsafe(32)
+        
+        cursor.execute('''
+            INSERT INTO users (username, email, password_hash, age, phone, verification_token)
+            VALUES (?, ?, ?, ?, ?, ?)
+        ''', (username, email, password_hash, age, phone, verification_token))
+        
+        conn.commit()
+        user_id = cursor.lastrowid
+        conn.close()
+        
+        return {
+            "id": user_id,
+            "username": username,
+            "email": email,
+            "verification_token": verification_token
+        }
+    except sqlite3.IntegrityError as e:
+        conn.close()
+        if "username" in str(e):
+            raise ValueError("Username already exists")
+        elif "email" in str(e):
+            raise ValueError("Email already exists")
+        raise ValueError("User creation failed")
+
+def get_user_by_email(email: str):
+    """Get user by email"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
+    user = cursor.fetchone()
+    conn.close()
+    return dict(user) if user else None
+
+def verify_email_token(token: str):
+    """Verify email with token"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute('''
+        UPDATE users 
+        SET email_verified = 1, verification_token = NULL
+        WHERE verification_token = ?
+    ''', (token,))
+    
+    rows_affected = cursor.rowcount
+    conn.commit()
+    conn.close()
+    
+    return rows_affected > 0
 
 def authenticate_user(email: str, password: str):
-    """Checks credentials for login."""
-    users = load_users()
-    if email not in users:
+    """Authenticate user and return user data"""
+    user = get_user_by_email(email)
+    if not user:
+        return None
+    if not verify_password(password, user['password_hash']):
         return None
     
-    user = users[email]
-    if not verify_password(password, user["hashed_password"]):
-        return None
-    return {"email": email, "role": user["role"]}
-
-def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
-    """Generates a JWT token for the session."""
-    to_encode = data.copy()
-    expire = datetime.utcnow() + (expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES))
-    to_encode.update({"exp": expire})
-    return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
+    # Update last login
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE users SET last_login = ? WHERE id = ?
+    ''', (datetime.utcnow(), user['id']))
+    conn.commit()
+    conn.close()
+    
+    return user

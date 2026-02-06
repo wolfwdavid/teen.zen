@@ -75,7 +75,7 @@ except Exception:
     GPT2TokenizerFast = None  # type: ignore
     GPT2_FAST_AVAILABLE = False
 
-from optimum.onnxruntime import ORTModelForCausalLM  # type: ignore
+#from optimum.onnxruntime import ORTModelForCausalLM  # type: ignore
 
 # ------------------------------------------------------------------------------
 # Config

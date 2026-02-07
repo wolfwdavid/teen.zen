@@ -24,9 +24,10 @@ function pickBase() {
     return env;
   }
   
-  // No env → smart defaults
+  // No env → smart defaults :3
   return native ? "http://10.20.50.249:8000" : "http://localhost:8000";
 }
 
 export const API_BASE = pickBase();
 export default API_BASE;
+

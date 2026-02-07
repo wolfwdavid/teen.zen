@@ -108,7 +108,10 @@ export default function App() {
     const checkStatus = async () => {
       try {
         const url = joinUrl(API_BASE, "/health");
-        const r = await fetch(url, { signal: ac.signal });
+        const r = await fetch(url, { 
+          signal: ac.signal,
+          headers: { 'ngrok-skip-browser-warning': 'true' }
+        });
         const j = await r.json().catch(() => null);
         if (!alive) return;
         if (r.ok && j?.status === 'ok') {
@@ -155,7 +158,10 @@ export default function App() {
     const apiUrl = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(userQuery)}`;
 
     try {
-      const response = await fetch(apiUrl, { signal: ac.signal });
+      const response = await fetch(apiUrl, { 
+        signal: ac.signal,
+        headers: { 'ngrok-skip-browser-warning': 'true' }
+      });
       if (!response.ok) throw new Error(`Server Error: ${response.status}`);
       if (!response.body) throw new Error("Readable stream not supported");
 
@@ -358,7 +364,7 @@ export default function App() {
                     <input 
                       type={showPassword ? "text" : "password"} 
                       className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all" 
-                      placeholder="â€¢â€¢â€¢â€¢â€¢â€¢â€¢â€¢" 
+                      placeholder="••••••••" 
                     />
                     <button 
                       type="button"

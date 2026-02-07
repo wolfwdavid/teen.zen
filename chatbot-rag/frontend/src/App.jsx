@@ -114,7 +114,7 @@ export default function App() {
         });
         const j = await r.json().catch(() => null);
         if (!alive) return;
-        if (r.ok && j?.status === 'ok') {
+        if (r.ok && j?.ok === true) {
           setBackend({ status: "up", detail: "Model Ready" });
         } else {
           setBackend({ status: "down", detail: `HTTP ${r.status}` });

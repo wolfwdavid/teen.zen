@@ -3,7 +3,7 @@ import {
   Check, X, Clock, Bot, User, Send, StopCircle, MessageSquare,
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
-  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle
+  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -21,6 +21,11 @@ function authHeaders(token) {
     'ngrok-skip-browser-warning': 'true',
     ...(token ? { 'Authorization': `Bearer ${token}` } : {})
   };
+}
+
+function capitalize(str) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1);
 }
 
 const NGROK_HEADERS = {
@@ -109,6 +114,8 @@ export default function App() {
   const [usersList, setUsersList] = useState([]);
   const [newTask, setNewTask] = useState({ title: '', description: '', assigned_to: '', due_date: '' });
   const [taskError, setTaskError] = useState(null);
+  const [profilePic, setProfilePic] = useState(null);
+  const profilePicRef = useRef(null);
 
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
@@ -191,6 +198,33 @@ export default function App() {
     } catch (e) {
       console.error("Failed to clear history:", e);
     }
+  };
+
+  // Profile picture
+  useEffect(() => {
+    if (currentUser) {
+      const saved = window.localStorage?.getItem(`profilePic_${currentUser.id}`);
+      if (saved) setProfilePic(saved);
+      else setProfilePic(null);
+    }
+  }, [currentUser]);
+
+  const handleProfilePicChange = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 2 * 1024 * 1024) { alert("Image must be under 2MB"); return; }
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const dataUrl = ev.target.result;
+      setProfilePic(dataUrl);
+      try { window.localStorage?.setItem(`profilePic_${currentUser.id}`, dataUrl); } catch {}
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const removeProfilePic = () => {
+    setProfilePic(null);
+    try { window.localStorage?.removeItem(`profilePic_${currentUser.id}`); } catch {}
   };
 
   // Load tasks
@@ -599,7 +633,7 @@ export default function App() {
               </>
             ) : (
               <button onClick={handleLogout} className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent text-zinc-400 hover:text-zinc-200">
-                <User size={14} /> {currentUser.username} (Sign Out)
+                <User size={14} /> {capitalize(currentUser.username)} (Sign Out)
               </button>
             )}
             <button onClick={() => navTo('debug')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
@@ -720,11 +754,29 @@ export default function App() {
               {/* User Info Card */}
               <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
                 <div className="flex items-center gap-5">
-                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
-                    <UserCircle size={48} />
+                  <div className="relative group">
+                    {profilePic ? (
+                      <img src={profilePic} alt="Profile" className="h-20 w-20 rounded-2xl object-cover ring-1 ring-indigo-500/20" />
+                    ) : (
+                      <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
+                        <UserCircle size={48} />
+                      </div>
+                    )}
+                    <button
+                      onClick={() => profilePicRef.current?.click()}
+                      className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                      <Camera size={22} className="text-white" />
+                    </button>
+                    <input ref={profilePicRef} type="file" accept="image/*" className="hidden" onChange={handleProfilePicChange} />
+                    {profilePic && (
+                      <button onClick={removeProfilePic}
+                        className="absolute -top-2 -right-2 flex h-6 w-6 items-center justify-center rounded-full bg-red-500/80 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500">
+                        <X size={14} />
+                      </button>
+                    )}
                   </div>
                   <div>
-                    <h2 className="text-2xl font-bold">{currentUser.username}</h2>
+                    <h2 className="text-2xl font-bold">{capitalize(currentUser.username)}</h2>
                     <p className="text-sm text-zinc-500">{currentUser.email}</p>
                     <span className={`mt-1 inline-block rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
                       currentUser.role === 'provider' ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20' : 'bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20'

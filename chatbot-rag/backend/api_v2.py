@@ -9,32 +9,23 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, EmailStr, validator
 from auth import (
-    create_user,
-    authenticate_user,
-    verify_email_token,
-    verify_email_pin,
-    resend_verification_pin,
-    create_access_token,
-    decode_access_token,
-    verify_google_token,
-    get_or_create_google_user,
-    get_user_by_id,
-    save_chat_message,
-    get_chat_history,
-    clear_chat_history,
-    get_available_quarters,
-    get_current_quarter,
-    get_chat_history_for_archive,
-    create_archive_record,
-    get_archives_for_provider,
-    get_provider_for_user,
-    create_task,
-    get_tasks_for_user,
-    get_tasks_assigned_by,
-    update_task_status,
-    get_all_users_for_provider,
-    ACCESS_TOKEN_EXPIRE_MINUTES,
-    get_user_by_email
+    create_user, authenticate_user, verify_email_token, verify_email_pin,
+    resend_verification_pin, create_access_token, decode_access_token,
+    verify_google_token, get_or_create_google_user, get_user_by_id,
+    save_chat_message, get_chat_history, clear_chat_history,
+    get_available_quarters, get_current_quarter,
+    get_chat_history_for_archive, create_archive_record,
+    get_archives_for_provider, get_provider_for_user,
+    create_task, get_tasks_for_user, get_tasks_assigned_by,
+    update_task_status, get_all_users_for_provider,
+    # Provider-patient management
+    get_provider_patients, get_patient_count, assign_patient_to_provider,
+    remove_patient_from_provider, auto_assign_patient,
+    # Clinical data
+    save_clinical_intake, get_clinical_intake,
+    save_therapist_observations, get_therapist_observations,
+    ACCESS_TOKEN_EXPIRE_MINUTES, get_user_by_email,
+    MAX_PATIENTS_PER_PROVIDER
 )
 from database import migrate_db
 from dotenv import load_dotenv
@@ -57,36 +48,34 @@ async def startup_event():
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=["*"], allow_credentials=True,
+    allow_methods=["*"], allow_headers=["*"],
 )
 
 
 # --- HELPERS ---
 def get_current_user(authorization: str = Header(None)):
-    """Extract user from JWT token in Authorization header"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
-
     token = authorization.replace("Bearer ", "")
     payload = decode_access_token(token)
-
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-
     user = get_user_by_id(payload.get("user_id"))
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
+    return user
 
+
+def require_provider(user):
+    if user.get('role') != 'provider':
+        raise HTTPException(status_code=403, detail="Only providers can access this")
     return user
 
 
 # --- MODELS ---
 class ChatRequest(BaseModel):
     question: str
-
 
 class RegisterRequest(BaseModel):
     username: str
@@ -99,64 +88,45 @@ class RegisterRequest(BaseModel):
 
     @validator('username')
     def username_valid(cls, v):
-        if len(v) < 3:
-            raise ValueError('Username must be at least 3 characters')
-        if not v.isalnum():
-            raise ValueError('Username must be alphanumeric')
+        if len(v) < 3: raise ValueError('Username must be at least 3 characters')
+        if not v.isalnum(): raise ValueError('Username must be alphanumeric')
         return v
-
     @validator('password')
     def password_strong(cls, v):
-        if len(v) < 8:
-            raise ValueError('Password must be at least 8 characters')
-        if len(v) > 72:
-            raise ValueError('Password cannot be longer than 72 characters')
+        if len(v) < 8: raise ValueError('Password must be at least 8 characters')
+        if len(v) > 72: raise ValueError('Password cannot be longer than 72 characters')
         return v
-
     @validator('confirm_password')
     def passwords_match(cls, v, values):
-        if 'password' in values and v != values['password']:
-            raise ValueError('Passwords do not match')
+        if 'password' in values and v != values['password']: raise ValueError('Passwords do not match')
         return v
-
     @validator('age')
     def age_valid(cls, v):
-        if v < 13:
-            raise ValueError('Must be at least 13 years old')
-        if v > 120:
-            raise ValueError('Invalid age')
+        if v < 13: raise ValueError('Must be at least 13 years old')
+        if v > 120: raise ValueError('Invalid age')
         return v
-
     @validator('role')
     def role_valid(cls, v):
-        if v not in ('user', 'provider'):
-            raise ValueError('Role must be user or provider')
+        if v not in ('user', 'provider'): raise ValueError('Role must be user or provider')
         return v
-
 
 class LoginRequest(BaseModel):
     email: EmailStr
     password: str
 
-
 class VerifyPinRequest(BaseModel):
     email: EmailStr
     pin: str
-
     @validator('pin')
     def pin_valid(cls, v):
-        if len(v) != 6 or not v.isdigit():
-            raise ValueError('PIN must be exactly 6 digits')
+        if len(v) != 6 or not v.isdigit(): raise ValueError('PIN must be exactly 6 digits')
         return v
-
 
 class ResendPinRequest(BaseModel):
     email: EmailStr
 
-
 class GoogleAuthRequest(BaseModel):
     token: str
-
 
 class CreateTaskRequest(BaseModel):
     title: str
@@ -164,28 +134,27 @@ class CreateTaskRequest(BaseModel):
     assigned_to: int
     due_date: Optional[str] = None
 
-    @validator('title')
-    def title_valid(cls, v):
-        if len(v) < 1:
-            raise ValueError('Title is required')
-        return v
-
-
 class UpdateTaskRequest(BaseModel):
     status: str
-
     @validator('status')
     def status_valid(cls, v):
-        if v not in ('pending', 'completed'):
-            raise ValueError('Status must be pending or completed')
+        if v not in ('pending', 'completed'): raise ValueError('Status must be pending or completed')
         return v
-
 
 class SaveChatRequest(BaseModel):
     role: str
     text: str
     sources: Optional[str] = None
     timing: Optional[float] = None
+
+class ClinicalDataRequest(BaseModel):
+    intake_data: dict
+
+class ObservationsRequest(BaseModel):
+    observations: dict
+
+class AssignPatientRequest(BaseModel):
+    user_id: int
 
 
 # --- AUTH ENDPOINTS ---
@@ -194,23 +163,10 @@ async def google_auth(request: GoogleAuthRequest):
     try:
         google_info = verify_google_token(request.token)
         user = get_or_create_google_user(google_info)
-
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-        access_token = create_access_token(
-            data={"sub": user['email'], "user_id": user['id']},
-            expires_delta=access_token_expires
-        )
-
-        return {
-            "access_token": access_token,
-            "token_type": "bearer",
-            "user": {
-                "id": user['id'],
-                "username": user['username'],
-                "email": user['email'],
-                "role": user.get('role', 'user')
-            }
-        }
+        access_token = create_access_token(data={"sub": user['email'], "user_id": user['id']}, expires_delta=access_token_expires)
+        return {"access_token": access_token, "token_type": "bearer",
+                "user": {"id": user['id'], "username": user['username'], "email": user['email'], "role": user.get('role', 'user')}}
     except ValueError as e:
         raise HTTPException(status_code=401, detail=str(e))
     except Exception as e:
@@ -221,26 +177,11 @@ async def google_auth(request: GoogleAuthRequest):
 @app.post("/api/auth/register")
 async def register(request: RegisterRequest):
     try:
-        user = create_user(
-            username=request.username,
-            email=request.email,
-            password=request.password,
-            role=request.role,
-            age=request.age,
-            phone=request.phone
-        )
-
-        return {
-            "success": True,
-            "message": "Registration successful! Please check your email for a verification code.",
-            "user": {
-                "id": user['id'],
-                "username": user['username'],
-                "email": user['email'],
-                "role": user.get('role', 'user')
-            },
-            "email_sent": user.get('email_sent', False)
-        }
+        user = create_user(username=request.username, email=request.email, password=request.password,
+                           role=request.role, age=request.age, phone=request.phone)
+        return {"success": True, "message": "Registration successful! Please check your email for a verification code.",
+                "user": {"id": user['id'], "username": user['username'], "email": user['email'], "role": user.get('role', 'user')},
+                "email_sent": user.get('email_sent', False)}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -252,13 +193,11 @@ async def register(request: RegisterRequest):
 async def verify_pin(request: VerifyPinRequest):
     try:
         success = verify_email_pin(request.email, request.pin)
-        if not success:
-            raise HTTPException(status_code=400, detail="Invalid verification code")
+        if not success: raise HTTPException(status_code=400, detail="Invalid verification code")
         return {"success": True, "message": "Email verified successfully! You can now sign in."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
+    except HTTPException: raise
     except Exception as e:
         logger.error(f"Verification error: {str(e)}")
         raise HTTPException(status_code=500, detail="Verification failed")
@@ -268,13 +207,11 @@ async def verify_pin(request: VerifyPinRequest):
 async def resend_pin(request: ResendPinRequest):
     try:
         success = resend_verification_pin(request.email)
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to send verification email")
+        if not success: raise HTTPException(status_code=500, detail="Failed to send verification email")
         return {"success": True, "message": "A new verification code has been sent to your email."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except HTTPException:
-        raise
+    except HTTPException: raise
     except Exception as e:
         logger.error(f"Resend error: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to resend verification code")
@@ -283,82 +220,49 @@ async def resend_pin(request: ResendPinRequest):
 @app.post("/api/auth/login")
 async def login(request: LoginRequest):
     user = authenticate_user(request.email, request.password)
-
-    if not user:
-        raise HTTPException(status_code=401, detail="Invalid email or password")
-
-    if not user['email_verified']:
-        raise HTTPException(status_code=403, detail="Please verify your email first")
-
+    if not user: raise HTTPException(status_code=401, detail="Invalid email or password")
+    if not user['email_verified']: raise HTTPException(status_code=403, detail="Please verify your email first")
     access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={"sub": user['email'], "user_id": user['id']},
-        expires_delta=access_token_expires
-    )
-
-    return {
-        "access_token": access_token,
-        "token_type": "bearer",
-        "user": {
-            "id": user['id'],
-            "username": user['username'],
-            "email": user['email'],
-            "role": user.get('role', 'user')
-        }
-    }
+    access_token = create_access_token(data={"sub": user['email'], "user_id": user['id']}, expires_delta=access_token_expires)
+    return {"access_token": access_token, "token_type": "bearer",
+            "user": {"id": user['id'], "username": user['username'], "email": user['email'], "role": user.get('role', 'user')}}
 
 
 @app.get("/api/auth/verify-email/{token}")
 async def verify_email(token: str):
     success = verify_email_token(token)
-    if not success:
-        raise HTTPException(status_code=400, detail="Invalid or expired token")
+    if not success: raise HTTPException(status_code=400, detail="Invalid or expired token")
     return {"success": True, "message": "Email verified successfully!"}
 
 
-# --- PROFILE ENDPOINT ---
+# --- PROFILE ---
 @app.get("/api/profile")
 async def get_profile(authorization: str = Header(None)):
     user = get_current_user(authorization)
-    return {
-        "id": user['id'],
-        "username": user['username'],
-        "email": user['email'],
-        "role": user.get('role', 'user'),
-        "age": user.get('age'),
-        "phone": user.get('phone'),
-        "created_at": user.get('created_at'),
-        "last_login": user.get('last_login')
-    }
+    result = {"id": user['id'], "username": user['username'], "email": user['email'],
+              "role": user.get('role', 'user'), "age": user.get('age'), "phone": user.get('phone'),
+              "created_at": user.get('created_at'), "last_login": user.get('last_login')}
+    if user.get('role') == 'provider':
+        result['patient_count'] = get_patient_count(user['id'])
+        result['max_patients'] = MAX_PATIENTS_PER_PROVIDER
+    return result
 
 
-# --- CHAT HISTORY ENDPOINTS ---
+# --- CHAT HISTORY ---
 @app.get("/api/chat/history")
-async def get_history(
-    authorization: str = Header(None),
-    year: Optional[int] = None,
-    quarter: Optional[int] = None
-):
+async def get_history(authorization: str = Header(None), year: Optional[int] = None, quarter: Optional[int] = None):
     user = get_current_user(authorization)
     messages = get_chat_history(user['id'], year, quarter)
     cy, cq = get_current_quarter()
-    return {
-        "messages": messages,
-        "current_quarter": {"year": cy, "quarter": cq},
-        "viewing": {"year": year or cy, "quarter": quarter or cq}
-    }
-
+    return {"messages": messages, "current_quarter": {"year": cy, "quarter": cq},
+            "viewing": {"year": year or cy, "quarter": quarter or cq}}
 
 @app.get("/api/chat/quarters")
 async def get_quarters(authorization: str = Header(None)):
     user = get_current_user(authorization)
     quarters = get_available_quarters(user['id'])
     cy, cq = get_current_quarter()
-    return {
-        "quarters": quarters,
-        "current": {"year": cy, "quarter": cq}
-    }
-
+    return {"quarters": quarters, "current": {"year": cy, "quarter": cq}}
 
 @app.post("/api/chat/history")
 async def save_message(request: SaveChatRequest, authorization: str = Header(None)):
@@ -366,120 +270,62 @@ async def save_message(request: SaveChatRequest, authorization: str = Header(Non
     save_chat_message(user['id'], request.role, request.text, request.sources, request.timing)
     return {"success": True}
 
-
 @app.delete("/api/chat/history")
 async def delete_history(authorization: str = Header(None)):
-    """Soft-clear: hides current quarter messages (does NOT permanently delete)"""
     user = get_current_user(authorization)
     clear_chat_history(user['id'])
     return {"success": True, "message": "Chat view cleared (history preserved in archives)"}
 
 
-# --- ARCHIVE ENDPOINTS ---
+# --- ARCHIVES ---
 @app.post("/api/chat/archive")
-async def archive_quarter(
-    authorization: str = Header(None),
-    year: Optional[int] = None,
-    quarter: Optional[int] = None
-):
-    """Archive a quarter's chat. Auto-archives previous quarter if none specified."""
+async def archive_quarter(authorization: str = Header(None), year: Optional[int] = None, quarter: Optional[int] = None):
     user = get_current_user(authorization)
-
     if year is None or quarter is None:
         cy, cq = get_current_quarter()
-        # Archive the previous quarter
-        if cq == 1:
-            year, quarter = cy - 1, 4
-        else:
-            year, quarter = cy, cq - 1
-
+        if cq == 1: year, quarter = cy - 1, 4
+        else: year, quarter = cy, cq - 1
     messages = get_chat_history_for_archive(user['id'], year, quarter)
-    if not messages:
-        return {"success": False, "message": "No messages to archive for this quarter"}
-
+    if not messages: return {"success": False, "message": "No messages to archive"}
     provider_id = get_provider_for_user(user['id'])
-
-    archive_id = create_archive_record(
-        user_id=user['id'],
-        provider_id=provider_id,
-        quarter=quarter,
-        year=year,
-        message_count=len(messages)
-    )
-
-    return {
-        "success": True,
-        "archive_id": archive_id,
-        "message": f"Archived Q{quarter} {year} ({len(messages)} messages)",
-        "quarter": quarter,
-        "year": year
-    }
-
+    archive_id = create_archive_record(user['id'], provider_id, quarter, year, len(messages))
+    return {"success": True, "archive_id": archive_id, "message": f"Archived Q{quarter} {year} ({len(messages)} messages)"}
 
 @app.get("/api/archives")
 async def get_archives(authorization: str = Header(None)):
-    """Provider: get all archived chat transcripts"""
     user = get_current_user(authorization)
-
-    if user.get('role') != 'provider':
-        raise HTTPException(status_code=403, detail="Only providers can view archives")
-
+    require_provider(user)
     archives = get_archives_for_provider(user['id'])
     return {"archives": archives}
 
-
 @app.get("/api/archives/{user_id}/{year}/{quarter}/pdf")
-async def get_archive_pdf(
-    user_id: int,
-    year: int,
-    quarter: int,
-    authorization: str = Header(None)
-):
-    """Generate PDF of a user's archived chat for a given quarter"""
+async def get_archive_pdf(user_id: int, year: int, quarter: int, authorization: str = Header(None)):
     provider = get_current_user(authorization)
-
-    if provider.get('role') != 'provider':
-        raise HTTPException(status_code=403, detail="Only providers can download archives")
-
+    require_provider(provider)
     target_user = get_user_by_id(user_id)
-    if not target_user:
-        raise HTTPException(status_code=404, detail="User not found")
-
+    if not target_user: raise HTTPException(status_code=404, detail="User not found")
     messages = get_chat_history_for_archive(user_id, year, quarter)
-    if not messages:
-        raise HTTPException(status_code=404, detail="No messages for this quarter")
-
-    # Generate simple PDF using reportlab if available, otherwise return text
+    if not messages: raise HTTPException(status_code=404, detail="No messages for this quarter")
     try:
         from reportlab.lib.pagesizes import letter
         from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
         from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
         from reportlab.lib.colors import HexColor
         import io
-
         buffer = io.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=50, bottomMargin=50)
         styles = getSampleStyleSheet()
-
-        title_style = ParagraphStyle('Title2', parent=styles['Title'], fontSize=18, textColor=HexColor('#4F46E5'))
+        title_style = ParagraphStyle('T2', parent=styles['Title'], fontSize=18, textColor=HexColor('#4F46E5'))
         meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=10, textColor=HexColor('#71717A'))
-        user_style = ParagraphStyle('UserMsg', parent=styles['Normal'], fontSize=11,
-                                     backColor=HexColor('#EEF2FF'), leftIndent=20, rightIndent=20,
-                                     spaceBefore=8, spaceAfter=4, borderPadding=8)
-        bot_style = ParagraphStyle('BotMsg', parent=styles['Normal'], fontSize=11,
-                                    leftIndent=20, rightIndent=20, spaceBefore=4, spaceAfter=8,
-                                    borderPadding=8)
-        date_style = ParagraphStyle('DateHeader', parent=styles['Normal'], fontSize=9,
-                                     textColor=HexColor('#A1A1AA'), alignment=1, spaceBefore=16, spaceAfter=8)
-
+        user_style = ParagraphStyle('U', parent=styles['Normal'], fontSize=11, backColor=HexColor('#EEF2FF'), leftIndent=20, rightIndent=20, spaceBefore=8, spaceAfter=4, borderPadding=8)
+        bot_style = ParagraphStyle('B', parent=styles['Normal'], fontSize=11, leftIndent=20, rightIndent=20, spaceBefore=4, spaceAfter=8, borderPadding=8)
+        date_style = ParagraphStyle('D', parent=styles['Normal'], fontSize=9, textColor=HexColor('#A1A1AA'), alignment=1, spaceBefore=16, spaceAfter=8)
         elements = []
         elements.append(Paragraph(f"Chat Archive — Q{quarter} {year}", title_style))
         elements.append(Spacer(1, 4))
         elements.append(Paragraph(f"User: {target_user['username']} ({target_user['email']})", meta_style))
         elements.append(Paragraph(f"Generated: {datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}", meta_style))
-        elements.append(Paragraph(f"Total Messages: {len(messages)}", meta_style))
         elements.append(Spacer(1, 20))
-
         current_date = None
         for msg in messages:
             msg_date = msg['created_at'][:10] if msg.get('created_at') else 'Unknown'
@@ -488,127 +334,131 @@ async def get_archive_pdf(
                 try:
                     dt = datetime.strptime(msg_date, '%Y-%m-%d')
                     elements.append(Paragraph(dt.strftime('%A, %B %d, %Y'), date_style))
-                except:
-                    elements.append(Paragraph(msg_date, date_style))
-
+                except: elements.append(Paragraph(msg_date, date_style))
             role_label = "USER" if msg['role'] == 'user' else "CHATBOT"
             time_str = msg['created_at'][11:16] if msg.get('created_at') and len(msg['created_at']) > 16 else ''
             text = msg.get('text', '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-
             style = user_style if msg['role'] == 'user' else bot_style
             elements.append(Paragraph(f"<b>{role_label}</b> {time_str}<br/>{text}", style))
-
         doc.build(elements)
         buffer.seek(0)
-
         filename = f"chat_archive_{target_user['username']}_Q{quarter}_{year}.pdf"
-        return Response(
-            content=buffer.read(),
-            media_type="application/pdf",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
-
+        return Response(content=buffer.read(), media_type="application/pdf",
+                        headers={"Content-Disposition": f"attachment; filename={filename}"})
     except ImportError:
-        # Fallback: return as plain text if reportlab not installed
-        lines = [f"Chat Archive — Q{quarter} {year}"]
-        lines.append(f"User: {target_user['username']} ({target_user['email']})")
-        lines.append(f"Generated: {datetime.utcnow().isoformat()}")
-        lines.append(f"Messages: {len(messages)}")
-        lines.append("=" * 60)
-
+        lines = [f"Chat Archive — Q{quarter} {year}", f"User: {target_user['username']}", "=" * 60]
         for msg in messages:
             role = "USER" if msg['role'] == 'user' else "BOT"
-            ts = msg.get('created_at', '')
-            lines.append(f"\n[{ts}] {role}: {msg.get('text', '')}")
-
-        content = "\n".join(lines)
-        filename = f"chat_archive_{target_user['username']}_Q{quarter}_{year}.txt"
-        return Response(
-            content=content,
-            media_type="text/plain",
-            headers={"Content-Disposition": f"attachment; filename={filename}"}
-        )
+            lines.append(f"\n[{msg.get('created_at', '')}] {role}: {msg.get('text', '')}")
+        return Response(content="\n".join(lines), media_type="text/plain",
+                        headers={"Content-Disposition": f"attachment; filename=archive_{target_user['username']}_Q{quarter}_{year}.txt"})
 
 
-# --- TASK ENDPOINTS ---
+# --- PROVIDER DASHBOARD ---
+@app.get("/api/provider/patients")
+async def get_patients(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    patients = get_provider_patients(user['id'])
+    return {"patients": patients, "count": len(patients), "max": MAX_PATIENTS_PER_PROVIDER}
+
+@app.post("/api/provider/patients")
+async def add_patient(request: AssignPatientRequest, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    try:
+        assign_patient_to_provider(user['id'], request.user_id)
+        return {"success": True, "message": "Patient assigned successfully"}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.delete("/api/provider/patients/{user_id}")
+async def remove_patient(user_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    remove_patient_from_provider(user['id'], user_id)
+    return {"success": True, "message": "Patient removed"}
+
+
+# --- CLINICAL INTAKE ---
+@app.get("/api/provider/patients/{user_id}/intake")
+async def get_intake(user_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    result = get_clinical_intake(user_id, user['id'])
+    return result
+
+@app.post("/api/provider/patients/{user_id}/intake")
+async def save_intake(user_id: int, request: ClinicalDataRequest, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    save_clinical_intake(user_id, user['id'], request.intake_data)
+    return {"success": True, "message": "Clinical intake saved"}
+
+
+# --- THERAPIST OBSERVATIONS (PRIVATE) ---
+@app.get("/api/provider/patients/{user_id}/observations")
+async def get_obs(user_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    result = get_therapist_observations(user_id, user['id'])
+    return result
+
+@app.post("/api/provider/patients/{user_id}/observations")
+async def save_obs(user_id: int, request: ObservationsRequest, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    save_therapist_observations(user_id, user['id'], request.observations)
+    return {"success": True, "message": "Observations saved"}
+
+
+# --- TASKS ---
 @app.get("/api/tasks")
 async def get_tasks(authorization: str = Header(None)):
     user = get_current_user(authorization)
     role = user.get('role', 'user')
-
-    if role == 'provider':
-        tasks = get_tasks_assigned_by(user['id'])
-    else:
-        tasks = get_tasks_for_user(user['id'])
-
+    tasks = get_tasks_assigned_by(user['id']) if role == 'provider' else get_tasks_for_user(user['id'])
     return {"tasks": tasks, "role": role}
-
 
 @app.post("/api/tasks")
 async def create_new_task(request: CreateTaskRequest, authorization: str = Header(None)):
     user = get_current_user(authorization)
-
-    if user.get('role') != 'provider':
-        raise HTTPException(status_code=403, detail="Only providers can create tasks")
-
-    task_id = create_task(
-        title=request.title,
-        description=request.description,
-        assigned_by=user['id'],
-        assigned_to=request.assigned_to,
-        due_date=request.due_date
-    )
-
+    require_provider(user)
+    task_id = create_task(title=request.title, description=request.description,
+                          assigned_by=user['id'], assigned_to=request.assigned_to, due_date=request.due_date)
     return {"success": True, "task_id": task_id, "message": "Task created successfully"}
-
 
 @app.put("/api/tasks/{task_id}")
 async def update_task(task_id: int, request: UpdateTaskRequest, authorization: str = Header(None)):
     user = get_current_user(authorization)
-
     success = update_task_status(task_id, user['id'], request.status)
-    if not success:
-        raise HTTPException(status_code=404, detail="Task not found or not assigned to you")
-
+    if not success: raise HTTPException(status_code=404, detail="Task not found or not assigned to you")
     return {"success": True, "message": f"Task marked as {request.status}"}
-
 
 @app.get("/api/users")
 async def get_users_list(authorization: str = Header(None)):
-    """Get list of users (for providers to assign tasks)"""
     user = get_current_user(authorization)
-
-    if user.get('role') != 'provider':
-        raise HTTPException(status_code=403, detail="Only providers can view user list")
-
+    require_provider(user)
     users = get_all_users_for_provider()
     return {"users": users}
 
 
-# --- HEALTH & CHAT ENDPOINTS ---
+# --- HEALTH & CHAT ---
 @app.get('/health')
 def health():
-    return {
-        "ok": True,
-        "initialized": chain_v2.state.initialized,
-        "model_loaded": chain_v2.state.model_loaded,
-        "rag_chain_is_none": chain_v2.rag_chain is None,
-        "retriever_is_none": chain_v2.retriever is None,
-        "vectorstore_is_none": chain_v2.vectorstore is None
-    }
-
+    return {"ok": True, "initialized": chain_v2.state.initialized, "model_loaded": chain_v2.state.model_loaded,
+            "rag_chain_is_none": chain_v2.rag_chain is None, "retriever_is_none": chain_v2.retriever is None,
+            "vectorstore_is_none": chain_v2.vectorstore is None}
 
 @app.post('/api/chat')
 async def chat(req: ChatRequest):
     try:
-        if chain_v2.rag_chain is None:
-            raise HTTPException(status_code=503, detail="RAG system not initialized")
+        if chain_v2.rag_chain is None: raise HTTPException(status_code=503, detail="RAG system not initialized")
         answer = chain_v2.rag_chain.invoke(req.question)
         return {"answer": answer}
     except Exception as e:
         logger.error(f"Chat error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Internal chatbot error: {str(e)}")
-
 
 @app.get('/api/chat/stream')
 async def chat_stream(question: str = Query(...)):
@@ -618,12 +468,10 @@ async def chat_stream(question: str = Query(...)):
             if chain_v2.rag_chain is None:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
-
             answer = chain_v2.rag_chain.invoke(question)
             yield f"data: {json.dumps({'type': 'token', 'text': str(answer)})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             logger.error(f"💥 [Stream] Error: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
-
     return StreamingResponse(event_generator(), media_type="text/event-stream")

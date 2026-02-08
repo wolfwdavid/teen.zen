@@ -30,6 +30,8 @@ GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 DB_PATH = Path(__file__).parent / "users.db"
 
+MAX_PATIENTS_PER_PROVIDER = 15
+
 
 def get_db_connection():
     conn = sqlite3.connect(DB_PATH)
@@ -55,13 +57,11 @@ def send_verification_email(to_email: str, pin: str, username: str) -> bool:
     if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
         print(f"⚠️ Gmail not configured. Verification PIN for {to_email}: {pin}")
         return True
-
     try:
         msg = MIMEMultipart("alternative")
         msg["Subject"] = f"🔐 Your Verification Code: {pin}"
         msg["From"] = f"RAG Chatbot <{GMAIL_ADDRESS}>"
         msg["To"] = to_email
-
         html_body = f"""
         <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
             <div style="text-align: center; margin-bottom: 32px;">
@@ -75,13 +75,10 @@ def send_verification_email(to_email: str, pin: str, username: str) -> bool:
             </div>
         </div>
         """
-
         msg.attach(MIMEText(html_body, "html"))
-
         with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
             server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
             server.sendmail(GMAIL_ADDRESS, to_email, msg.as_string())
-
         print(f"✅ Verification email sent to {to_email}")
         return True
     except Exception as e:
@@ -107,30 +104,27 @@ def decode_access_token(token: str):
 def create_user(username: str, email: str, password: str, role: str = "user", age: Optional[int] = None, phone: Optional[str] = None):
     conn = get_db_connection()
     cursor = conn.cursor()
-
     try:
         password_hash = hash_password(password)
         pin = generate_pin()
         pin_expires = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-
         cursor.execute('''
             INSERT INTO users (username, email, password_hash, role, age, phone, verification_token, pin_expires_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         ''', (username, email, password_hash, role, age, phone, pin, pin_expires))
-
         conn.commit()
         user_id = cursor.lastrowid
         conn.close()
-
         email_sent = send_verification_email(email, pin, username)
 
-        return {
-            "id": user_id,
-            "username": username,
-            "email": email,
-            "role": role,
-            "email_sent": email_sent
-        }
+        # Auto-assign to a provider if this is a user (patient)
+        if role == 'user':
+            try:
+                auto_assign_patient(user_id)
+            except Exception as e:
+                print(f"⚠️ Auto-assign failed: {e}")
+
+        return {"id": user_id, "username": username, "email": email, "role": role, "email_sent": email_sent}
     except sqlite3.IntegrityError as e:
         conn.close()
         if "username" in str(e):
@@ -143,33 +137,20 @@ def create_user(username: str, email: str, password: str, role: str = "user", ag
 def verify_email_pin(email: str, pin: str) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-
-    cursor.execute(
-        'SELECT verification_token, pin_expires_at FROM users WHERE email = ? AND email_verified = 0',
-        (email,)
-    )
+    cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = ? AND email_verified = 0', (email,))
     row = cursor.fetchone()
-
     if not row:
         conn.close()
         return False
-
     stored_pin = row['verification_token']
     expires_at = row['pin_expires_at']
-
     if expires_at and datetime.utcnow() > datetime.fromisoformat(expires_at):
         conn.close()
         raise ValueError("Verification code has expired. Please request a new one.")
-
     if stored_pin != pin:
         conn.close()
         return False
-
-    cursor.execute('''
-        UPDATE users SET email_verified = 1, verification_token = NULL, pin_expires_at = NULL
-        WHERE email = ?
-    ''', (email,))
-
+    cursor.execute('UPDATE users SET email_verified = 1, verification_token = NULL, pin_expires_at = NULL WHERE email = ?', (email,))
     conn.commit()
     conn.close()
     return True
@@ -178,29 +159,19 @@ def verify_email_pin(email: str, pin: str) -> bool:
 def resend_verification_pin(email: str) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-
     cursor.execute('SELECT username, email_verified FROM users WHERE email = ?', (email,))
     row = cursor.fetchone()
-
     if not row:
         conn.close()
         raise ValueError("Email not found")
-
     if row['email_verified']:
         conn.close()
         raise ValueError("Email is already verified")
-
     new_pin = generate_pin()
     pin_expires = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-
-    cursor.execute('''
-        UPDATE users SET verification_token = ?, pin_expires_at = ?
-        WHERE email = ?
-    ''', (new_pin, pin_expires, email))
-
+    cursor.execute('UPDATE users SET verification_token = ?, pin_expires_at = ? WHERE email = ?', (new_pin, pin_expires, email))
     conn.commit()
     conn.close()
-
     return send_verification_email(email, new_pin, row['username'])
 
 
@@ -228,13 +199,11 @@ def authenticate_user(email: str, password: str):
         return None
     if not verify_password(password, user['password_hash']):
         return None
-
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (datetime.utcnow(), user['id']))
     conn.commit()
     conn.close()
-
     return user
 
 
@@ -243,20 +212,14 @@ def verify_google_token(token: str):
         resp = http_requests.get(f"https://oauth2.googleapis.com/tokeninfo?id_token={token}")
         if resp.status_code != 200:
             raise ValueError("Invalid Google token")
-
         payload = resp.json()
-
         if payload.get('aud') != GOOGLE_CLIENT_ID:
             raise ValueError("Token not intended for this app")
-
         if payload.get('email_verified') != 'true' and payload.get('email_verified') is not True:
             raise ValueError("Google email not verified")
-
         return {
-            "email": payload.get("email"),
-            "name": payload.get("name", ""),
-            "given_name": payload.get("given_name", ""),
-            "picture": payload.get("picture", ""),
+            "email": payload.get("email"), "name": payload.get("name", ""),
+            "given_name": payload.get("given_name", ""), "picture": payload.get("picture", ""),
             "google_id": payload.get("sub")
         }
     except Exception as e:
@@ -266,7 +229,6 @@ def verify_google_token(token: str):
 def get_or_create_google_user(google_info: dict):
     email = google_info['email']
     user = get_user_by_email(email)
-
     if user:
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -274,13 +236,10 @@ def get_or_create_google_user(google_info: dict):
         conn.commit()
         conn.close()
         return user
-
     conn = get_db_connection()
     cursor = conn.cursor()
-
     username = google_info.get('given_name', '').lower() or email.split('@')[0]
     username = ''.join(c for c in username if c.isalnum())
-
     base_username = username
     counter = 1
     while True:
@@ -289,26 +248,18 @@ def get_or_create_google_user(google_info: dict):
             break
         username = f"{base_username}{counter}"
         counter += 1
-
     random_password = secrets.token_urlsafe(32)
     password_hash = hash_password(random_password)
-
-    cursor.execute('''
-        INSERT INTO users (username, email, password_hash, role, email_verified)
-        VALUES (?, ?, ?, 'user', 1)
-    ''', (username, email, password_hash))
-
+    cursor.execute('INSERT INTO users (username, email, password_hash, role, email_verified) VALUES (?, ?, ?, \'user\', 1)', (username, email, password_hash))
     conn.commit()
     user_id = cursor.lastrowid
     conn.close()
-
-    return {
-        "id": user_id,
-        "username": username,
-        "email": email,
-        "role": "user",
-        "email_verified": 1
-    }
+    # Auto-assign
+    try:
+        auto_assign_patient(user_id)
+    except Exception as e:
+        print(f"⚠️ Auto-assign failed: {e}")
+    return {"id": user_id, "username": username, "email": email, "role": "user", "email_verified": 1}
 
 
 def verify_email_token(token: str):
@@ -324,19 +275,14 @@ def verify_email_token(token: str):
 # ========== QUARTER HELPERS ==========
 
 def get_quarter_dates(year: int, quarter: int):
-    """Return (start_date, end_date) for a given year/quarter"""
     quarter_starts = {1: "01-01", 2: "04-01", 3: "07-01", 4: "10-01"}
     quarter_ends = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
-    start = f"{year}-{quarter_starts[quarter]}"
-    end = f"{year}-{quarter_ends[quarter]}"
-    return start, end
+    return f"{year}-{quarter_starts[quarter]}", f"{year}-{quarter_ends[quarter]}"
 
 
 def get_current_quarter():
-    """Return (year, quarter_number) for today"""
     now = datetime.utcnow()
-    q = (now.month - 1) // 3 + 1
-    return now.year, q
+    return now.year, (now.month - 1) // 3 + 1
 
 
 # ========== CHAT HISTORY ==========
@@ -344,119 +290,84 @@ def get_current_quarter():
 def save_chat_message(user_id: int, role: str, text: str, sources: str = None, timing: float = None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO chat_messages (user_id, role, text, sources, timing)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, role, text, sources, timing))
+    cursor.execute('INSERT INTO chat_messages (user_id, role, text, sources, timing) VALUES (?, ?, ?, ?, ?)',
+                   (user_id, role, text, sources, timing))
     conn.commit()
     conn.close()
 
 
 def get_chat_history(user_id: int, year: int = None, quarter: int = None):
-    """Get chat history for a user, filtered by quarter. Default = current quarter."""
     if year is None or quarter is None:
         year, quarter = get_current_quarter()
-
     start_date, end_date = get_quarter_dates(year, quarter)
-
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT role, text, sources, timing, created_at
-        FROM chat_messages
-        WHERE user_id = ? AND hidden = 0
-          AND date(created_at) >= ? AND date(created_at) <= ?
+        SELECT role, text, sources, timing, created_at FROM chat_messages
+        WHERE user_id = ? AND hidden = 0 AND date(created_at) >= ? AND date(created_at) <= ?
         ORDER BY created_at ASC
     ''', (user_id, start_date, end_date))
     rows = cursor.fetchall()
     conn.close()
-
     messages = []
     for row in rows:
-        msg = {
-            "type": row['role'],
-            "text": row['text'],
-            "timing": row['timing'],
-            "created_at": row['created_at']
-        }
+        msg = {"type": row['role'], "text": row['text'], "timing": row['timing'], "created_at": row['created_at']}
         if row['sources']:
-            try:
-                msg['sources'] = json.loads(row['sources'])
-            except:
-                msg['sources'] = []
+            try: msg['sources'] = json.loads(row['sources'])
+            except: msg['sources'] = []
         else:
             msg['sources'] = []
         messages.append(msg)
-
     return messages
 
 
 def get_available_quarters(user_id: int):
-    """Return list of quarters that have chat data for a user"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT DISTINCT
-            strftime('%Y', created_at) as year,
-            CASE
-                WHEN cast(strftime('%m', created_at) as integer) <= 3 THEN 1
-                WHEN cast(strftime('%m', created_at) as integer) <= 6 THEN 2
-                WHEN cast(strftime('%m', created_at) as integer) <= 9 THEN 3
-                ELSE 4
-            END as quarter,
-            COUNT(*) as count
-        FROM chat_messages
-        WHERE user_id = ?
-        GROUP BY year, quarter
-        ORDER BY year DESC, quarter DESC
+        SELECT DISTINCT strftime('%Y', created_at) as year,
+            CASE WHEN cast(strftime('%m', created_at) as integer) <= 3 THEN 1
+                 WHEN cast(strftime('%m', created_at) as integer) <= 6 THEN 2
+                 WHEN cast(strftime('%m', created_at) as integer) <= 9 THEN 3
+                 ELSE 4 END as quarter, COUNT(*) as count
+        FROM chat_messages WHERE user_id = ?
+        GROUP BY year, quarter ORDER BY year DESC, quarter DESC
     ''', (user_id,))
     rows = cursor.fetchall()
     conn.close()
-
     return [{"year": int(r['year']), "quarter": int(r['quarter']), "count": r['count']} for r in rows]
 
 
 def clear_chat_history(user_id: int):
-    """Soft-clear: hide messages from current quarter (not permanent delete)"""
     year, quarter = get_current_quarter()
     start_date, end_date = get_quarter_dates(year, quarter)
-
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        UPDATE chat_messages SET hidden = 1
-        WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
-    ''', (user_id, start_date, end_date))
+    cursor.execute('UPDATE chat_messages SET hidden = 1 WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?',
+                   (user_id, start_date, end_date))
     conn.commit()
     conn.close()
 
 
 def get_chat_history_for_archive(user_id: int, year: int, quarter: int):
-    """Get ALL messages (including hidden) for archiving purposes"""
     start_date, end_date = get_quarter_dates(year, quarter)
-
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT role, text, sources, timing, created_at
-        FROM chat_messages
+        SELECT role, text, sources, timing, created_at FROM chat_messages
         WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
         ORDER BY created_at ASC
     ''', (user_id, start_date, end_date))
     rows = cursor.fetchall()
     conn.close()
-
     return [dict(row) for row in rows]
 
 
 def create_archive_record(user_id: int, provider_id: int, quarter: int, year: int, message_count: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    quarter_label = f"Q{quarter}"
-    cursor.execute('''
-        INSERT INTO chat_archives (user_id, provider_id, quarter, year, message_count)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (user_id, provider_id, quarter_label, year, message_count))
+    cursor.execute('INSERT INTO chat_archives (user_id, provider_id, quarter, year, message_count) VALUES (?, ?, ?, ?, ?)',
+                   (user_id, provider_id, f"Q{quarter}", year, message_count))
     conn.commit()
     archive_id = cursor.lastrowid
     conn.close()
@@ -464,15 +375,12 @@ def create_archive_record(user_id: int, provider_id: int, quarter: int, year: in
 
 
 def get_archives_for_provider(provider_id: int):
-    """Get all archives visible to a provider"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT ca.*, u.username as user_name, u.email as user_email
-        FROM chat_archives ca
-        JOIN users u ON ca.user_id = u.id
-        WHERE ca.provider_id = ?
-        ORDER BY ca.year DESC, ca.quarter DESC
+        FROM chat_archives ca JOIN users u ON ca.user_id = u.id
+        WHERE ca.provider_id = ? ORDER BY ca.year DESC, ca.quarter DESC
     ''', (provider_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -480,17 +388,167 @@ def get_archives_for_provider(provider_id: int):
 
 
 def get_provider_for_user(user_id: int):
-    """Find the provider who has assigned tasks to this user"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT provider_id FROM provider_patients WHERE user_id = ? LIMIT 1', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row['provider_id'] if row else None
+
+
+# ========== PROVIDER-PATIENT MANAGEMENT ==========
+
+def auto_assign_patient(user_id: int):
+    """Auto-assign a new user to a provider with fewer than MAX patients"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Check if already assigned
+    cursor.execute('SELECT id FROM provider_patients WHERE user_id = ?', (user_id,))
+    if cursor.fetchone():
+        conn.close()
+        return  # Already assigned
+
+    # Find providers with capacity, sorted by fewest patients
+    cursor.execute('''
+        SELECT u.id, COUNT(pp.id) as patient_count
+        FROM users u
+        LEFT JOIN provider_patients pp ON u.id = pp.provider_id
+        WHERE u.role = 'provider' AND u.email_verified = 1
+        GROUP BY u.id
+        HAVING patient_count < ?
+        ORDER BY patient_count ASC
+        LIMIT 1
+    ''', (MAX_PATIENTS_PER_PROVIDER,))
+    row = cursor.fetchone()
+
+    if row:
+        cursor.execute('INSERT OR IGNORE INTO provider_patients (provider_id, user_id) VALUES (?, ?)',
+                       (row['id'], user_id))
+        conn.commit()
+        print(f"✅ Auto-assigned user {user_id} to provider {row['id']}")
+    else:
+        print(f"⚠️ No available providers for user {user_id}")
+
+    conn.close()
+
+
+def assign_patient_to_provider(provider_id: int, user_id: int):
+    """Manually assign a patient to a provider"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+
+    # Check capacity
+    cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = ?', (provider_id,))
+    count = cursor.fetchone()['cnt']
+    if count >= MAX_PATIENTS_PER_PROVIDER:
+        conn.close()
+        raise ValueError(f"Provider has reached maximum of {MAX_PATIENTS_PER_PROVIDER} patients")
+
+    try:
+        cursor.execute('INSERT INTO provider_patients (provider_id, user_id) VALUES (?, ?)', (provider_id, user_id))
+        conn.commit()
+    except sqlite3.IntegrityError:
+        conn.close()
+        raise ValueError("Patient already assigned to this provider")
+    conn.close()
+
+
+def remove_patient_from_provider(provider_id: int, user_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('DELETE FROM provider_patients WHERE provider_id = ? AND user_id = ?', (provider_id, user_id))
+    conn.commit()
+    conn.close()
+
+
+def get_provider_patients(provider_id: int):
+    """Get all patients assigned to a provider"""
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT DISTINCT assigned_by FROM tasks WHERE assigned_to = ? LIMIT 1
-    ''', (user_id,))
+        SELECT u.id, u.username, u.email, u.age, u.created_at, u.last_login, pp.assigned_at
+        FROM provider_patients pp
+        JOIN users u ON pp.user_id = u.id
+        WHERE pp.provider_id = ?
+        ORDER BY u.username ASC
+    ''', (provider_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_patient_count(provider_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = ?', (provider_id,))
+    count = cursor.fetchone()['cnt']
+    conn.close()
+    return count
+
+
+# ========== CLINICAL INTAKE ==========
+
+def save_clinical_intake(user_id: int, provider_id: int, intake_data: dict):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    data_json = json.dumps(intake_data)
+    now = datetime.utcnow().isoformat()
+    cursor.execute('''
+        INSERT INTO patient_clinical_data (user_id, provider_id, intake_data, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, provider_id)
+        DO UPDATE SET intake_data = ?, updated_at = ?
+    ''', (user_id, provider_id, data_json, now, data_json, now))
+    conn.commit()
+    conn.close()
+
+
+def get_clinical_intake(user_id: int, provider_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT intake_data, updated_at FROM patient_clinical_data WHERE user_id = ? AND provider_id = ?',
+                   (user_id, provider_id))
     row = cursor.fetchone()
     conn.close()
     if row:
-        return row['assigned_by']
-    return None
+        try:
+            return {"data": json.loads(row['intake_data']), "updated_at": row['updated_at']}
+        except:
+            return {"data": {}, "updated_at": row['updated_at']}
+    return {"data": {}, "updated_at": None}
+
+
+# ========== THERAPIST OBSERVATIONS (PRIVATE) ==========
+
+def save_therapist_observations(user_id: int, provider_id: int, observations: dict):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    obs_json = json.dumps(observations)
+    now = datetime.utcnow().isoformat()
+    cursor.execute('''
+        INSERT INTO therapist_observations (user_id, provider_id, observations, updated_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT(user_id, provider_id)
+        DO UPDATE SET observations = ?, updated_at = ?
+    ''', (user_id, provider_id, obs_json, now, obs_json, now))
+    conn.commit()
+    conn.close()
+
+
+def get_therapist_observations(user_id: int, provider_id: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT observations, updated_at FROM therapist_observations WHERE user_id = ? AND provider_id = ?',
+                   (user_id, provider_id))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            return {"data": json.loads(row['observations']), "updated_at": row['updated_at']}
+        except:
+            return {"data": {}, "updated_at": row['updated_at']}
+    return {"data": {}, "updated_at": None}
 
 
 # ========== TASKS ==========
@@ -498,10 +556,8 @@ def get_provider_for_user(user_id: int):
 def create_task(title: str, description: str, assigned_by: int, assigned_to: int, due_date: str = None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('''
-        INSERT INTO tasks (title, description, assigned_by, assigned_to, due_date)
-        VALUES (?, ?, ?, ?, ?)
-    ''', (title, description, assigned_by, assigned_to, due_date))
+    cursor.execute('INSERT INTO tasks (title, description, assigned_by, assigned_to, due_date) VALUES (?, ?, ?, ?, ?)',
+                   (title, description, assigned_by, assigned_to, due_date))
     conn.commit()
     task_id = cursor.lastrowid
     conn.close()
@@ -512,11 +568,8 @@ def get_tasks_for_user(user_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT t.*, u.username as assigned_by_name
-        FROM tasks t
-        JOIN users u ON t.assigned_by = u.id
-        WHERE t.assigned_to = ?
-        ORDER BY t.created_at DESC
+        SELECT t.*, u.username as assigned_by_name FROM tasks t
+        JOIN users u ON t.assigned_by = u.id WHERE t.assigned_to = ? ORDER BY t.created_at DESC
     ''', (user_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -527,11 +580,8 @@ def get_tasks_assigned_by(provider_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT t.*, u.username as assigned_to_name
-        FROM tasks t
-        JOIN users u ON t.assigned_to = u.id
-        WHERE t.assigned_by = ?
-        ORDER BY t.created_at DESC
+        SELECT t.*, u.username as assigned_to_name FROM tasks t
+        JOIN users u ON t.assigned_to = u.id WHERE t.assigned_by = ? ORDER BY t.created_at DESC
     ''', (provider_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -541,14 +591,9 @@ def get_tasks_assigned_by(provider_id: int):
 def update_task_status(task_id: int, user_id: int, status: str):
     conn = get_db_connection()
     cursor = conn.cursor()
-
     completed_at = datetime.utcnow().isoformat() if status == 'completed' else None
-
-    cursor.execute('''
-        UPDATE tasks SET status = ?, completed_at = ?
-        WHERE id = ? AND assigned_to = ?
-    ''', (status, completed_at, task_id, user_id))
-
+    cursor.execute('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ? AND assigned_to = ?',
+                   (status, completed_at, task_id, user_id))
     rows = cursor.rowcount
     conn.commit()
     conn.close()

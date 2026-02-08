@@ -147,6 +147,15 @@ export default function App() {
   });
   const [profileSaved, setProfileSaved] = useState(false);
 
+  // Provider Dashboard
+  const [providerPatients, setProviderPatients] = useState([]);
+  const [selectedPatient, setSelectedPatient] = useState(null);
+  const [patientIntake, setPatientIntake] = useState({});
+  const [therapistObs, setTherapistObs] = useState({});
+  const [openSections, setOpenSections] = useState(new Set(['presenting']));
+  const [intakeSaved, setIntakeSaved] = useState(false);
+  const [obsSaved, setObsSaved] = useState(false);
+
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
 
@@ -381,7 +390,10 @@ export default function App() {
   useEffect(() => {
     if (view === 'profile' && authToken) {
       loadTasks();
-      if (currentUser?.role === 'provider') loadUsers();
+      if (currentUser?.role === 'provider') {
+        loadUsers();
+        loadProviderPatients();
+      }
     }
   }, [view, authToken]);
 
@@ -641,6 +653,148 @@ export default function App() {
       console.error("Failed to update task:", e);
     }
   };
+
+  // --- PROVIDER DASHBOARD ---
+  const loadProviderPatients = async () => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/provider/patients"), { headers: authHeaders(authToken) });
+      if (res.ok) {
+        const data = await res.json();
+        setProviderPatients(data.patients || []);
+      }
+    } catch (e) { console.error("Failed to load patients:", e); }
+  };
+
+  const selectPatient = async (patient) => {
+    setSelectedPatient(patient);
+    setIntakeSaved(false);
+    setObsSaved(false);
+    setOpenSections(new Set(['presenting']));
+    // Load intake data
+    try {
+      const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patient.id}/intake`), { headers: authHeaders(authToken) });
+      if (res.ok) { const d = await res.json(); setPatientIntake(d.data || {}); }
+    } catch (e) { setPatientIntake({}); }
+    // Load observations
+    try {
+      const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patient.id}/observations`), { headers: authHeaders(authToken) });
+      if (res.ok) { const d = await res.json(); setTherapistObs(d.data || {}); }
+    } catch (e) { setTherapistObs({}); }
+  };
+
+  const updateIntake = (field, value) => { setPatientIntake(prev => ({ ...prev, [field]: value })); setIntakeSaved(false); };
+  const updateObs = (field, value) => { setTherapistObs(prev => ({ ...prev, [field]: value })); setObsSaved(false); };
+
+  const savePatientIntake = async () => {
+    if (!selectedPatient) return;
+    try {
+      await fetch(joinUrl(API_BASE, `/api/provider/patients/${selectedPatient.id}/intake`), {
+        method: "POST", headers: authHeaders(authToken),
+        body: JSON.stringify({ intake_data: patientIntake })
+      });
+      setIntakeSaved(true);
+      setTimeout(() => setIntakeSaved(false), 2000);
+    } catch (e) { console.error("Failed to save intake:", e); }
+  };
+
+  const saveTherapistObs = async () => {
+    if (!selectedPatient) return;
+    try {
+      await fetch(joinUrl(API_BASE, `/api/provider/patients/${selectedPatient.id}/observations`), {
+        method: "POST", headers: authHeaders(authToken),
+        body: JSON.stringify({ observations: therapistObs })
+      });
+      setObsSaved(true);
+      setTimeout(() => setObsSaved(false), 2000);
+    } catch (e) { console.error("Failed to save observations:", e); }
+  };
+
+  const toggleSection = (name) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      next.has(name) ? next.delete(name) : next.add(name);
+      return next;
+    });
+  };
+
+  // Form field helpers for clinical sections
+  const CField = ({ label, field, placeholder, type = 'text', obj = 'intake' }) => {
+    const val = obj === 'intake' ? (patientIntake[field] || '') : (therapistObs[field] || '');
+    const onChange = obj === 'intake' ? updateIntake : updateObs;
+    return (
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{label}</label>
+        <input type={type} value={val} onChange={(e) => onChange(field, e.target.value)}
+          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+          placeholder={placeholder} />
+      </div>
+    );
+  };
+
+  const CTextArea = ({ label, field, placeholder, rows = 3, hint, obj = 'intake' }) => {
+    const val = obj === 'intake' ? (patientIntake[field] || '') : (therapistObs[field] || '');
+    const onChange = obj === 'intake' ? updateIntake : updateObs;
+    return (
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{label}</label>
+        {hint && <p className="text-[10px] text-zinc-600 ml-1 italic">{hint}</p>}
+        <textarea value={val} onChange={(e) => onChange(field, e.target.value)} rows={rows}
+          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700 resize-none"
+          placeholder={placeholder} />
+      </div>
+    );
+  };
+
+  const CSelect = ({ label, field, options, obj = 'intake' }) => {
+    const val = obj === 'intake' ? (patientIntake[field] || '') : (therapistObs[field] || '');
+    const onChange = obj === 'intake' ? updateIntake : updateObs;
+    return (
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{label}</label>
+        <select value={val} onChange={(e) => onChange(field, e.target.value)}
+          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+          <option value="">Select...</option>
+          {options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </div>
+    );
+  };
+
+  const CSlider = ({ label, field, min = 0, max = 10 }) => {
+    const val = patientIntake[field] ?? 5;
+    return (
+      <div className="space-y-1">
+        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{label}: <span className="text-indigo-400">{val}</span></label>
+        <input type="range" min={min} max={max} value={val} onChange={(e) => updateIntake(field, parseInt(e.target.value))}
+          className="w-full accent-indigo-500" />
+        <div className="flex justify-between text-[9px] text-zinc-600"><span>{min}</span><span>{max}</span></div>
+      </div>
+    );
+  };
+
+  const SectionCard = ({ id, title, icon, color = 'indigo', lens, children }) => (
+    <div className="rounded-2xl border border-zinc-800/50 bg-zinc-900/20 overflow-hidden">
+      <button onClick={() => toggleSection(id)}
+        className={`w-full flex items-center justify-between px-6 py-4 text-left hover:bg-zinc-900/40 transition-colors`}>
+        <h4 className={`flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-${color}-400`}>
+          {icon} {title}
+        </h4>
+        <ChevronRight size={16} className={`text-zinc-600 transition-transform ${openSections.has(id) ? 'rotate-90' : ''}`} />
+      </button>
+      {openSections.has(id) && (
+        <div className="px-6 pb-6 space-y-4">
+          {lens && (
+            <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3 mb-2">
+              <span className="text-sm">🧠</span>
+              <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">{lens}</p>
+            </div>
+          )}
+          {children}
+        </div>
+      )}
+    </div>
+  );
 
   // --- CHAT ---
   const handleSendMessage = async (e) => {
@@ -1055,6 +1209,303 @@ export default function App() {
                 )}
               </div>
 
+              {/* ========== ROLE-BASED CONTENT ========== */}
+              {currentUser.role === 'provider' ? (
+                <>
+                  {/* ===== C. PROVIDER DASHBOARD ===== */}
+                  <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-2">
+                      <Globe size={16} /> C. Provider Dashboard
+                    </h3>
+                    <p className="text-[10px] text-zinc-500 mb-6">
+                      {providerPatients.length} / {15} patients assigned
+                    </p>
+
+                    {/* Patient Grid */}
+                    {providerPatients.length === 0 ? (
+                      <div className="text-center py-8">
+                        <UserCircle size={48} className="mx-auto text-zinc-800 mb-3" />
+                        <p className="text-zinc-500 text-sm">No patients assigned yet.</p>
+                        <p className="text-zinc-600 text-xs mt-1">Users will be automatically assigned when they register.</p>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
+                        {providerPatients.map(p => (
+                          <button key={p.id} onClick={() => selectPatient(p)}
+                            className={`flex flex-col items-center gap-1 rounded-2xl border p-4 transition-all text-center ${
+                              selectedPatient?.id === p.id
+                                ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/30'
+                                : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
+                            }`}>
+                            <UserCircle size={28} className={selectedPatient?.id === p.id ? 'text-indigo-400' : 'text-zinc-600'} />
+                            <span className="text-xs font-bold text-zinc-200 truncate w-full">{capitalize(p.username)}</span>
+                            <span className="text-[9px] text-zinc-600 truncate w-full">{p.email}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Selected Patient Clinical Forms */}
+                    {selectedPatient && (
+                      <div className="space-y-3 mt-4">
+                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-2">
+                          <h4 className="text-sm font-bold text-zinc-200">Clinical Profile: <span className="text-indigo-400">{capitalize(selectedPatient.username)}</span></h4>
+                          <button onClick={() => setSelectedPatient(null)} className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold">
+                            <X size={14} />
+                          </button>
+                        </div>
+
+                        {/* 1. Presenting Concern */}
+                        <SectionCard id="presenting" title="1. Presenting Concern" icon="📋" color="indigo"
+                          lens="People often don't know the real issue yet. This captures the conscious narrative, not the full truth.">
+                          <CTextArea label="What brings you to therapy right now?" field="whatBringsYou" placeholder="Open-ended response..." rows={3} />
+                          <CTextArea label="Why seek help at this moment?" field="whyNow" placeholder="Why now?" rows={2} />
+                          <CTextArea label="What feels most urgent?" field="mostUrgent" placeholder="Most pressing concern..." rows={2} />
+                          <CSlider label="Distress Level" field="distressLevel" min={0} max={10} />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <CField label="Duration of Problem" field="problemDuration" placeholder="e.g. 6 months, 2 years" />
+                            <CField label="Getting Worse / Staying Same" field="gettingWorse" placeholder="Trajectory..." />
+                          </div>
+                        </SectionCard>
+
+                        {/* 2. Mental Health History */}
+                        <SectionCard id="history" title="2. Mental Health History" icon="📖" color="indigo"
+                          lens="I'm not just tracking disorders—I'm tracking how this person relates to help, authority, and vulnerability.">
+                          <CTextArea label="Previous Therapy" field="previousTherapy" placeholder="What helped / what didn't..." rows={3} />
+                          <CTextArea label="Past Diagnoses" field="pastDiagnoses" placeholder="If any..." rows={2} />
+                          <CTextArea label="Psychiatric Hospitalizations" field="hospitalizations" placeholder="Details if applicable..." rows={2} />
+                          <CTextArea label="Current or Past Medications" field="medications" placeholder="Names, dosages, duration..." rows={2} />
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <CSelect label="History of Self-Harm or SI" field="selfHarmHistory" options={['No', 'Yes - past', 'Yes - current']} />
+                            <CField label="When (if applicable)" field="selfHarmWhen" placeholder="Timeline..." />
+                          </div>
+                        </SectionCard>
+
+                        {/* 3. Risk & Safety Screening */}
+                        <SectionCard id="risk" title="3. Risk & Safety Screening" icon="🛡️" color="red"
+                          lens="Asking doesn't create risk. Avoiding it does.">
+                          <CSelect label="Thoughts of harming yourself?" field="thoughtsHarmSelf" options={['No', 'Past only', 'Current - passive', 'Current - active']} />
+                          <CSelect label="Thoughts of harming others?" field="thoughtsHarmOthers" options={['No', 'Past only', 'Current - passive', 'Current - active']} />
+                          <CSelect label="Current plans or intent?" field="currentPlans" options={['No', 'Vague thoughts', 'Specific plan', 'Plan with intent']} />
+                          <CSelect label="Access to means?" field="accessToMeans" options={['No', 'Yes - limited', 'Yes - readily available']} />
+                          <CTextArea label="Protective Factors" field="protectiveFactors" placeholder="People, beliefs, responsibilities that keep them safe..." rows={3} />
+                        </SectionCard>
+
+                        {/* 4. Life Context Snapshot */}
+                        <SectionCard id="life" title="4. Life Context Snapshot" icon="🌍" color="indigo"
+                          lens="Symptoms don't exist in a vacuum. This section often explains everything without naming it.">
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mt-2">A. Relationships</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <CField label="Romantic Status" field="romanticStatus" placeholder="Single, partnered, etc." />
+                            <CField label="Current Conflicts" field="conflicts" placeholder="Estrangements, disputes..." />
+                          </div>
+                          <CTextArea label="Family Dynamics" field="familyDynamics" placeholder="Describe family relationships..." rows={2} />
+                          <CTextArea label="Close Friendships" field="closeFriendships" placeholder="Support network..." rows={2} />
+
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mt-4">B. Work / School</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <CField label="Occupation / Studies" field="occupation" placeholder="Current role..." />
+                            <CSelect label="Job Satisfaction" field="jobSatisfaction" options={['Very satisfied', 'Satisfied', 'Neutral', 'Dissatisfied', 'Very dissatisfied', 'N/A']} />
+                          </div>
+                          <CTextArea label="Work/School Stressors" field="workStressors" placeholder="Instability, conflicts..." rows={2} />
+
+                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mt-4">C. Living Situation</p>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            <CSelect label="Living Arrangement" field="livingSituation" options={['Alone', 'With partner', 'With family', 'With roommates', 'Group home', 'Unstable/homeless']} />
+                            <CSelect label="Housing Stability" field="housingStability" options={['Stable', 'Somewhat stable', 'Unstable', 'At risk']} />
+                          </div>
+                          <CSelect label="Safety at Home" field="safetyAtHome" options={['Feels safe', 'Somewhat safe', 'Does not feel safe', 'Unsafe - needs intervention']} />
+                        </SectionCard>
+
+                        {/* 5. Developmental & Family Background */}
+                        <SectionCard id="developmental" title="5. Developmental & Family Background" icon="🌱" color="indigo"
+                          lens="This isn't excavation yet—this is mapping the terrain.">
+                          <CTextArea label="Family of Origin" field="familyOfOrigin" placeholder="Parents, siblings, family structure..." rows={3} />
+                          <CSelect label="Childhood Environment" field="childhoodEnvironment" options={['Supportive', 'Mixed', 'Chaotic', 'Neglectful', 'Abusive', 'Other']} />
+                          <CTextArea label="Significant Losses or Transitions" field="significantLosses" placeholder="Deaths, moves, divorces, major changes..." rows={3} />
+                          <CTextArea label="Trauma History" field="traumaHistory" placeholder="Only what they're ready to share..." rows={3} hint="Without forcing detail — just mapping the terrain." />
+                        </SectionCard>
+
+                        {/* 6. Coping & Regulation Style */}
+                        <SectionCard id="coping" title="6. Coping & Regulation Style" icon="⚡" color="indigo"
+                          lens="I'm listening for avoidance vs engagement, control vs collapse, connection vs isolation.">
+                          <CTextArea label="How do you cope when stressed?" field="copingWhenStressed" placeholder="Coping mechanisms..." rows={3} />
+                          <CTextArea label="What helps you calm down?" field="whatCalms" placeholder="Regulation strategies..." rows={2} />
+                          <CTextArea label="What makes things worse?" field="whatMakesWorse" placeholder="Triggers, patterns..." rows={2} />
+                          <CTextArea label="Substance Use" field="substanceUse" placeholder="Alcohol, cannabis, etc. — frequency, amount..." rows={2} />
+                        </SectionCard>
+
+                        {/* 7. Strengths & Resources */}
+                        <SectionCard id="strengths" title="7. Strengths & Resources" icon="💪" color="emerald"
+                          lens="I treat strengths as active ingredients, not footnotes.">
+                          <CTextArea label="Personal Strengths" field="personalStrengths" placeholder="What they're good at, character qualities..." rows={3} />
+                          <CTextArea label="Past Successes" field="pastSuccesses" placeholder="Things they've overcome or achieved..." rows={2} />
+                          <CTextArea label="Values or Beliefs That Matter" field="values" placeholder="What gives life meaning..." rows={2} />
+                          <CTextArea label="People Who Support Them" field="supportPeople" placeholder="Support network..." rows={2} />
+                        </SectionCard>
+
+                        {/* 8. Goals for Therapy */}
+                        <SectionCard id="goals" title="8. Goals for Therapy" icon="🎯" color="indigo"
+                          lens="Goals tell me how the patient imagines change—and what they fear losing.">
+                          <CTextArea label="What would be different if therapy helped?" field="whatWouldBeDifferent" placeholder="Their vision of change..." rows={3} />
+                          <CTextArea label="Short-Term Hopes" field="shortTermHopes" placeholder="Next few weeks/months..." rows={2} />
+                          <CTextArea label="Long-Term Vision" field="longTermVision" placeholder="6 months - 1 year..." rows={2} />
+                          <CTextArea label="What they don't want from therapy" field="dontWantFromTherapy" placeholder="Boundaries, fears about the process..." rows={2} />
+                        </SectionCard>
+
+                        {/* Save Clinical Intake */}
+                        <button onClick={savePatientIntake}
+                          className={`w-full rounded-2xl py-3.5 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                            intakeSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-500'
+                          }`}>
+                          {intakeSaved ? <><Check size={16} /> Intake Saved!</> : <><Save size={16} /> Save Clinical Intake</>}
+                        </button>
+
+                        {/* 9. Therapist Observations (PRIVATE) */}
+                        <div className="mt-4 pt-4 border-t-2 border-red-500/20">
+                          <SectionCard id="observations" title="9. Therapist Observations (Private)" icon="🔒" color="red"
+                            lens="This is where intuition meets discipline. Not shared verbatim with the patient.">
+                            <CSelect label="Affect" field="affect" obj="obs" options={['Flat', 'Anxious', 'Warm', 'Guarded', 'Irritable', 'Labile', 'Constricted', 'Appropriate', 'Elevated']} />
+                            <CTextArea label="Speech Patterns" field="speechPatterns" obj="obs" placeholder="Rate, volume, coherence, tangentiality..." rows={2} />
+                            <CSelect label="Insight Level" field="insightLevel" obj="obs" options={['Poor', 'Limited', 'Fair', 'Good', 'Excellent']} />
+                            <CSelect label="Attachment Signals" field="attachmentSignals" obj="obs" options={['Secure', 'Anxious', 'Avoidant', 'Disorganized', 'Mixed']} />
+                            <CTextArea label="Initial Hypotheses (Tentative)" field="initialHypotheses" obj="obs" placeholder="Working formulation..." rows={4} />
+                          </SectionCard>
+
+                          {/* Modern Add-Ons */}
+                          <div className="mt-3">
+                            <SectionCard id="modern" title="Modern Add-Ons" icon="✨" color="indigo"
+                              lens="Especially important for digital therapy contexts.">
+                              <CSelect label="Preferred Communication Style" field="communicationStyle" options={['Direct', 'Gentle', 'Reflective', 'Challenging', 'Collaborative']} />
+                              <CSelect label="Emotional Intensity Tolerance" field="emotionalIntensityTolerance" options={['Low - needs gentle approach', 'Moderate', 'High - can handle direct confrontation']} />
+                              <CTextArea label="Topics to Avoid Initially" field="topicsToAvoid" placeholder="Sensitive areas to approach carefully..." rows={2} />
+                              <CTextArea label="Cultural Considerations" field="culturalConsiderations" placeholder="Identity, background, cultural context..." rows={2} />
+                              <CField label="Language Preferences" field="languagePreferences" placeholder="Primary language, translation needs..." />
+                            </SectionCard>
+                          </div>
+
+                          {/* Save Observations */}
+                          <button onClick={saveTherapistObs}
+                            className={`w-full rounded-2xl py-3.5 mt-3 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                              obsSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-red-600/80 shadow-red-500/20 hover:bg-red-600'
+                            }`}>
+                            {obsSaved ? <><Check size={16} /> Observations Saved!</> : <><Save size={16} /> Save Private Observations</>}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Provider's Own A & B */}
+                  <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-6">
+                      <UserCircle size={16} /> A. Provider Identifying Information
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
+                          <input value={profileData.fullName} onChange={(e) => updateProfile('fullName', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="Legal full name" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
+                          <input value={profileData.preferredName} onChange={(e) => updateProfile('preferredName', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="What you'd like to be called" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Pronouns</label>
+                          <select value={profileData.pronouns} onChange={(e) => updateProfile('pronouns', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                            <option value="">Select...</option>
+                            <option value="he/him">He / Him</option>
+                            <option value="she/her">She / Her</option>
+                            <option value="they/them">They / Them</option>
+                            <option value="other">Other</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Date of Birth</label>
+                          <input type="date" value={profileData.dob} onChange={(e) => updateProfile('dob', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Contact Phone</label>
+                          <input type="tel" value={profileData.contactPhone} onChange={(e) => updateProfile('contactPhone', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="(555) 123-4567" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Contact Email</label>
+                          <input type="email" value={profileData.contactEmail} onChange={(e) => updateProfile('contactEmail', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="email@example.com" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-6">
+                      <ShieldCheck size={16} /> B. Consent & Logistics
+                    </h3>
+                    <div className="space-y-4">
+                      <div className="flex items-start gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-950/50">
+                        <button onClick={() => updateProfile('consentAcknowledged', !profileData.consentAcknowledged)}
+                          className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center border transition-all ${profileData.consentAcknowledged ? 'bg-indigo-600 border-indigo-500' : 'border-zinc-700'}`}>
+                          {profileData.consentAcknowledged && <Check size={14} className="text-white" />}
+                        </button>
+                        <div>
+                          <p className="text-sm text-zinc-200 font-medium">Informed Consent Acknowledged</p>
+                          <p className="text-xs text-zinc-500 mt-1">Client has been informed of their rights, therapy process, and limits of confidentiality.</p>
+                        </div>
+                      </div>
+                      <div className="flex items-start gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-950/50">
+                        <button onClick={() => updateProfile('confidentialityExplained', !profileData.confidentialityExplained)}
+                          className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center border transition-all ${profileData.confidentialityExplained ? 'bg-indigo-600 border-indigo-500' : 'border-zinc-700'}`}>
+                          {profileData.confidentialityExplained && <Check size={14} className="text-white" />}
+                        </button>
+                        <div>
+                          <p className="text-sm text-zinc-200 font-medium">Confidentiality Limits Explained</p>
+                          <p className="text-xs text-zinc-500 mt-1">Harm to self/others, abuse, court orders — all limits discussed.</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Session Format</label>
+                          <select value={profileData.sessionFormat} onChange={(e) => updateProfile('sessionFormat', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                            <option value="">Select...</option>
+                            <option value="In-Person">In-Person</option>
+                            <option value="Telehealth">Telehealth</option>
+                            <option value="Hybrid">Hybrid</option>
+                          </select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Payment / Insurance</label>
+                          <input value={profileData.paymentInfo} onChange={(e) => updateProfile('paymentInfo', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="Insurance info or payment method" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <button onClick={saveProfileData}
+                    className={`w-full rounded-2xl py-4 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                      profileSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-amber-600 shadow-amber-500/20 hover:bg-amber-500'
+                    }`}>
+                    {profileSaved ? <><Check size={18} /> Profile Saved!</> : <><Save size={18} /> Save Provider Profile</>}
+                  </button>
+                </>
+              ) : (
+                <>
               {/* ===== SECTION A: Identifying Information ===== */}
               <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400 mb-6">
@@ -1356,6 +1807,8 @@ export default function App() {
                 }`}>
                 {profileSaved ? <><Check size={18} /> Profile Saved!</> : <><Save size={18} /> Save Profile</>}
               </button>
+                </>
+              )}
 
             </div>
           </div>

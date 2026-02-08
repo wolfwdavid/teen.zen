@@ -4,7 +4,6 @@ node_modules/
 .yarn
 
 # Build outputs
-dist/
 build/
 *.log
 
@@ -47,5 +46,4 @@ chatbot-rag/backend/.onnx/
 *.pth
 
 # Build outputs
-chatbot-rag/frontend/dist/
 svelte-teen-zen/dist/

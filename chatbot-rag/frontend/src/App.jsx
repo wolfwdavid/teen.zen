@@ -19,7 +19,8 @@ import {
   Mail,
   ArrowLeft,
   RefreshCw,
-  Loader2
+  Loader2,
+  Menu
 } from 'lucide-react';
 
 // --- Configuration ---
@@ -99,6 +100,7 @@ export default function App() {
   const [streamError, setStreamError] = useState(null);
   const [backend, setBackend] = useState({ status: "checking", detail: "" });
   const [currentUser, setCurrentUser] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   
   // Registration States
   const [showPassword, setShowPassword] = useState(false);
@@ -451,69 +453,133 @@ export default function App() {
   return (
     <div className="flex h-screen w-full flex-col bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
       {/* Navbar */}
-      <nav className="flex h-16 items-center justify-between border-b border-zinc-900 bg-zinc-950/50 px-6 backdrop-blur-md shrink-0">
-        <div className="flex items-center gap-3">
-          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
-            <Bot className="w-5 h-5 text-white" />
-          </div>
-          <div className="flex flex-col">
-            <span className="text-sm font-bold tracking-tight leading-none">RAG Chatbot <span className="text-indigo-500">Pro</span></span>
-            <div className="mt-1 flex items-center gap-2">
-              <div className={`h-1.5 w-1.5 rounded-full ${backend.status === 'up' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
-              <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                {backend.status === 'up' ? backend.detail : 'Offline'}
-              </span>
+      <nav className="relative border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-md shrink-0">
+        <div className="flex h-16 items-center justify-between px-6">
+          <div className="flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
+              <Bot className="w-5 h-5 text-white" />
+            </div>
+            <div className="flex flex-col">
+              <span className="text-sm font-bold tracking-tight leading-none">RAG Chatbot <span className="text-indigo-500">Pro</span></span>
+              <div className="mt-1 flex items-center gap-2">
+                <div className={`h-1.5 w-1.5 rounded-full ${backend.status === 'up' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
+                <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
+                  {backend.status === 'up' ? backend.detail : 'Offline'}
+                </span>
+              </div>
             </div>
           </div>
-        </div>
 
-        <div className="flex items-center gap-2">
-          <button 
-            onClick={() => setView('chat')} 
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-              view === 'chat' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
-          >
-            <MessageSquare size={14} /> Chat
-          </button>
-
-          {!currentUser ? (
-            <>
-              <button 
-                onClick={() => setView('register')} 
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-                  view === 'register' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <UserPlus size={14} /> Register
-              </button>
-              <button 
-                onClick={() => setView('login')} 
-                className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-                  view === 'login' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                }`}
-              >
-                <LogIn size={14} /> Sign In
-              </button>
-            </>
-          ) : (
+          {/* Desktop menu */}
+          <div className="hidden md:flex items-center gap-2">
             <button 
-              onClick={handleLogout} 
-              className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent text-zinc-400 hover:text-zinc-200"
+              onClick={() => setView('chat')} 
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+                view === 'chat' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
             >
-              <User size={14} /> {currentUser.username} (Sign Out)
+              <MessageSquare size={14} /> Chat
             </button>
-          )}
 
+            {!currentUser ? (
+              <>
+                <button 
+                  onClick={() => setView('register')} 
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+                    view === 'register' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <UserPlus size={14} /> Register
+                </button>
+                <button 
+                  onClick={() => setView('login')} 
+                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+                    view === 'login' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+                  }`}
+                >
+                  <LogIn size={14} /> Sign In
+                </button>
+              </>
+            ) : (
+              <button 
+                onClick={handleLogout} 
+                className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent text-zinc-400 hover:text-zinc-200"
+              >
+                <User size={14} /> {currentUser.username} (Sign Out)
+              </button>
+            )}
+
+            <button 
+              onClick={() => setView('debug')} 
+              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
+                view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'
+              }`}
+            >
+              <Terminal size={14} /> Debug
+            </button>
+          </div>
+
+          {/* Mobile hamburger button */}
           <button 
-            onClick={() => setView('debug')} 
-            className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-              view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-            }`}
+            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+            className="md:hidden flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-all"
           >
-            <Terminal size={14} /> Debug
+            {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
+
+        {/* Mobile dropdown menu */}
+        {mobileMenuOpen && (
+          <div className="md:hidden border-t border-zinc-900 bg-zinc-950/95 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex flex-col p-3 gap-1">
+              <button 
+                onClick={() => { setView('chat'); setMobileMenuOpen(false); }} 
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
+                  view === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                }`}
+              >
+                <MessageSquare size={16} /> Chat
+              </button>
+
+              {!currentUser ? (
+                <>
+                  <button 
+                    onClick={() => { setView('register'); setMobileMenuOpen(false); }} 
+                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
+                      view === 'register' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                    }`}
+                  >
+                    <UserPlus size={16} /> Register
+                  </button>
+                  <button 
+                    onClick={() => { setView('login'); setMobileMenuOpen(false); }} 
+                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
+                      view === 'login' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                    }`}
+                  >
+                    <LogIn size={16} /> Sign In
+                  </button>
+                </>
+              ) : (
+                <button 
+                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }} 
+                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-all"
+                >
+                  <User size={16} /> {currentUser.username} (Sign Out)
+                </button>
+              )}
+
+              <button 
+                onClick={() => { setView('debug'); setMobileMenuOpen(false); }} 
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
+                  view === 'debug' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
+                }`}
+              >
+                <Terminal size={16} /> Debug
+              </button>
+            </div>
+          </div>
+        )}
       </nav>
 
       {/* Main Content */}
@@ -974,7 +1040,7 @@ export default function App() {
           </div>
         )}
 
-        {/*:3 ==================== DEBUG VIEW ==================== */}
+        {/* ==================== DEBUG VIEW ==================== */}
         {view === 'debug' && (
           <div className="flex-1 p-8 overflow-y-auto">
             <div className="mx-auto max-w-3xl space-y-6">
@@ -1026,4 +1092,3 @@ export default function App() {
     </div>
   );
 }
-

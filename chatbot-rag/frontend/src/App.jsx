@@ -452,9 +452,75 @@ export default function App() {
     setRegForm({ ...regForm, password: suggestedPassword, confirmPassword: suggestedPassword });
   };
 
-  // --- Google Sign-In placeholder ---
+  // --- Google Sign-In ---
+  const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
+
+  useEffect(() => {
+    if (!GOOGLE_CLIENT_ID) return;
+
+    // Load Google Identity Services script
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.async = true;
+    script.defer = true;
+    script.onload = () => {
+      window.google?.accounts.id.initialize({
+        client_id: GOOGLE_CLIENT_ID,
+        callback: handleGoogleResponse,
+      });
+    };
+    document.head.appendChild(script);
+
+    return () => {
+      document.head.removeChild(script);
+    };
+  }, []);
+
+  const handleGoogleResponse = async (response) => {
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/auth/google"), {
+        method: "POST",
+        headers: NGROK_HEADERS,
+        body: JSON.stringify({ token: response.credential })
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        const errorMsg = typeof data.detail === 'string' ? data.detail : "Google sign-in failed";
+        throw new Error(errorMsg);
+      }
+
+      setCurrentUser(data.user);
+      setView('chat');
+    } catch (err) {
+      // Show error on whichever view is active
+      if (view === 'register') setRegError(err.message);
+      else if (view === 'login') setLoginError(err.message);
+      else alert(err.message);
+    }
+  };
+
   const handleGoogleSignIn = () => {
-    alert("Google Sign-In will be available soon! Please use email registration for now.");
+    if (!GOOGLE_CLIENT_ID || !window.google) {
+      alert("Google Sign-In is not configured yet.");
+      return;
+    }
+    window.google.accounts.id.prompt((notification) => {
+      if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
+        // Fallback: use renderButton approach
+        const btn = document.getElementById('google-signin-fallback');
+        if (btn) {
+          btn.innerHTML = '';
+          window.google.accounts.id.renderButton(btn, {
+            theme: 'filled_black',
+            size: 'large',
+            width: '100%',
+            text: view === 'register' ? 'signup_with' : 'signin_with',
+          });
+        }
+      }
+    });
   };
 
   return (
@@ -686,6 +752,7 @@ export default function App() {
                 </svg>
                 Sign up with Google
               </button>
+              <div id="google-signin-fallback" className="w-full"></div>
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800"></div>

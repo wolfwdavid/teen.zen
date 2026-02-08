@@ -3,7 +3,7 @@ import {
   Check, X, Clock, Bot, User, Send, StopCircle, MessageSquare,
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
-  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera
+  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -34,16 +34,20 @@ const NGROK_HEADERS = {
 };
 
 // --- Chat Message Component ---
-const ChatMessage = ({ type, text, sources = [], timing, error }) => {
+const ChatMessage = ({ type, text, sources = [], timing, error, profilePic }) => {
   const isUser = type === 'user';
   return (
     <div className={`group flex w-full flex-col ${isUser ? 'items-end' : 'items-start'} mb-8`}>
       <div className={`flex max-w-[85%] gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
-        <div className={`flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full border shadow-sm ${
-          isUser ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-300'
-        }`}>
-          {isUser ? <User size={18} /> : <Bot size={18} />}
-        </div>
+        {isUser && profilePic ? (
+          <img src={profilePic} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover border border-indigo-500 shadow-sm" />
+        ) : (
+          <div className={`flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full border shadow-sm ${
+            isUser ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-300'
+          }`}>
+            {isUser ? <User size={18} /> : <Bot size={18} />}
+          </div>
+        )}
         <div className={`relative flex flex-col gap-2 rounded-2xl px-4 py-3 text-sm shadow-sm ring-1 ${
           isUser ? 'bg-indigo-600 text-white ring-indigo-500' : 'bg-zinc-900/50 text-zinc-100 ring-zinc-800 backdrop-blur-sm'
         }`}>
@@ -116,6 +120,19 @@ export default function App() {
   const [taskError, setTaskError] = useState(null);
   const [profilePic, setProfilePic] = useState(null);
   const profilePicRef = useRef(null);
+  const [profileData, setProfileData] = useState({
+    fullName: '', preferredName: '', pronouns: '', dob: '', contactPhone: '', contactEmail: '',
+    emergencyName: '', emergencyRelation: '', emergencyPhone: '',
+    parent1FullName: '', parent1PreferredName: '', parent1Pronouns: '', parent1Dob: '',
+    parent1ContactPhone: '', parent1ContactEmail: '',
+    parent1EmergencyName: '', parent1EmergencyRelation: '', parent1EmergencyPhone: '',
+    parent2FullName: '', parent2PreferredName: '', parent2Pronouns: '', parent2Dob: '',
+    parent2ContactPhone: '', parent2ContactEmail: '',
+    parent2EmergencyName: '', parent2EmergencyRelation: '', parent2EmergencyPhone: '',
+    consentAcknowledged: false, confidentialityExplained: false,
+    sessionFormat: '', paymentInfo: ''
+  });
+  const [profileSaved, setProfileSaved] = useState(false);
 
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
@@ -200,12 +217,17 @@ export default function App() {
     }
   };
 
-  // Profile picture
+  // Profile picture & data
   useEffect(() => {
     if (currentUser) {
-      const saved = window.localStorage?.getItem(`profilePic_${currentUser.id}`);
-      if (saved) setProfilePic(saved);
+      const savedPic = window.localStorage?.getItem(`profilePic_${currentUser.id}`);
+      if (savedPic) setProfilePic(savedPic);
       else setProfilePic(null);
+
+      const savedData = window.localStorage?.getItem(`profileData_${currentUser.id}`);
+      if (savedData) {
+        try { setProfileData(prev => ({ ...prev, ...JSON.parse(savedData) })); } catch {}
+      }
     }
   }, [currentUser]);
 
@@ -225,6 +247,19 @@ export default function App() {
   const removeProfilePic = () => {
     setProfilePic(null);
     try { window.localStorage?.removeItem(`profilePic_${currentUser.id}`); } catch {}
+  };
+
+  const saveProfileData = () => {
+    try {
+      window.localStorage?.setItem(`profileData_${currentUser.id}`, JSON.stringify(profileData));
+      setProfileSaved(true);
+      setTimeout(() => setProfileSaved(false), 2000);
+    } catch {}
+  };
+
+  const updateProfile = (field, value) => {
+    setProfileData(prev => ({ ...prev, [field]: value }));
+    setProfileSaved(false);
   };
 
   // Load tasks
@@ -707,7 +742,7 @@ export default function App() {
                         </button>
                       </div>
                     )}
-                    {messages.map((m, i) => <ChatMessage key={i} {...m} />)}
+                    {messages.map((m, i) => <ChatMessage key={i} {...m} profilePic={profilePic} />)}
                   </>
                 )}
                 <div ref={messagesEndRef} className="h-4" />
@@ -786,6 +821,308 @@ export default function App() {
                   </div>
                 </div>
               </div>
+
+              {/* ===== SECTION A: Identifying Information ===== */}
+              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400 mb-6">
+                  <UserCircle size={16} /> A. Identifying Information
+                </h3>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
+                      <input value={profileData.fullName} onChange={(e) => updateProfile('fullName', e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        placeholder="Legal full name" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
+                      <input value={profileData.preferredName} onChange={(e) => updateProfile('preferredName', e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        placeholder="What you'd like to be called" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Pronouns</label>
+                      <select value={profileData.pronouns} onChange={(e) => updateProfile('pronouns', e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                        <option value="">Select pronouns...</option>
+                        <option value="he/him">He / Him</option>
+                        <option value="she/her">She / Her</option>
+                        <option value="they/them">They / Them</option>
+                        <option value="he/they">He / They</option>
+                        <option value="she/they">She / They</option>
+                        <option value="other">Other</option>
+                      </select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Date of Birth</label>
+                      <input type="date" value={profileData.dob} onChange={(e) => updateProfile('dob', e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                    </div>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
+                      <input type="tel" value={profileData.contactPhone} onChange={(e) => updateProfile('contactPhone', e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        placeholder="+1 (555) 000-0000" />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email</label>
+                      <input type="email" value={profileData.contactEmail} onChange={(e) => updateProfile('contactEmail', e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        placeholder="personal@email.com" />
+                    </div>
+                  </div>
+                  <div className="border-t border-zinc-800/50 pt-4 mt-2">
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3 ml-1">Emergency Contact</p>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name</label>
+                        <input value={profileData.emergencyName} onChange={(e) => updateProfile('emergencyName', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Emergency contact name" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Relationship</label>
+                        <input value={profileData.emergencyRelation} onChange={(e) => updateProfile('emergencyRelation', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="e.g. Parent, Sibling" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
+                        <input type="tel" value={profileData.emergencyPhone} onChange={(e) => updateProfile('emergencyPhone', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="+1 (555) 000-0000" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ===== SECTION B: Parent/Guardian Information ===== */}
+              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400 mb-6">
+                  <User size={16} /> B. Parent / Guardian Information
+                </h3>
+
+                {/* Parent / Guardian 1 */}
+                <div className="mb-8">
+                  <p className="text-xs font-bold text-zinc-400 mb-4 px-1 border-l-2 border-indigo-500 pl-3">Parent / Guardian 1</p>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
+                        <input value={profileData.parent1FullName} onChange={(e) => updateProfile('parent1FullName', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Legal full name" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
+                        <input value={profileData.parent1PreferredName} onChange={(e) => updateProfile('parent1PreferredName', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Preferred name" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Pronouns</label>
+                        <select value={profileData.parent1Pronouns} onChange={(e) => updateProfile('parent1Pronouns', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                          <option value="">Select pronouns...</option>
+                          <option value="he/him">He / Him</option>
+                          <option value="she/her">She / Her</option>
+                          <option value="they/them">They / Them</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Date of Birth</label>
+                        <input type="date" value={profileData.parent1Dob} onChange={(e) => updateProfile('parent1Dob', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
+                        <input type="tel" value={profileData.parent1ContactPhone} onChange={(e) => updateProfile('parent1ContactPhone', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="+1 (555) 000-0000" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email</label>
+                        <input type="email" value={profileData.parent1ContactEmail} onChange={(e) => updateProfile('parent1ContactEmail', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="parent@email.com" />
+                      </div>
+                    </div>
+                    <div className="border-t border-zinc-800/50 pt-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3 ml-1">Emergency Contact</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name</label>
+                          <input value={profileData.parent1EmergencyName} onChange={(e) => updateProfile('parent1EmergencyName', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="Emergency contact" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Relationship</label>
+                          <input value={profileData.parent1EmergencyRelation} onChange={(e) => updateProfile('parent1EmergencyRelation', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="Relationship" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
+                          <input type="tel" value={profileData.parent1EmergencyPhone} onChange={(e) => updateProfile('parent1EmergencyPhone', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="+1 (555) 000-0000" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Parent / Guardian 2 */}
+                <div>
+                  <p className="text-xs font-bold text-zinc-400 mb-4 px-1 border-l-2 border-amber-500 pl-3">Parent / Guardian 2 <span className="text-zinc-600 font-normal">(optional)</span></p>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
+                        <input value={profileData.parent2FullName} onChange={(e) => updateProfile('parent2FullName', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Legal full name" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
+                        <input value={profileData.parent2PreferredName} onChange={(e) => updateProfile('parent2PreferredName', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Preferred name" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Pronouns</label>
+                        <select value={profileData.parent2Pronouns} onChange={(e) => updateProfile('parent2Pronouns', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                          <option value="">Select pronouns...</option>
+                          <option value="he/him">He / Him</option>
+                          <option value="she/her">She / Her</option>
+                          <option value="they/them">They / Them</option>
+                          <option value="other">Other</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Date of Birth</label>
+                        <input type="date" value={profileData.parent2Dob} onChange={(e) => updateProfile('parent2Dob', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
+                        <input type="tel" value={profileData.parent2ContactPhone} onChange={(e) => updateProfile('parent2ContactPhone', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="+1 (555) 000-0000" />
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email</label>
+                        <input type="email" value={profileData.parent2ContactEmail} onChange={(e) => updateProfile('parent2ContactEmail', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="parent@email.com" />
+                      </div>
+                    </div>
+                    <div className="border-t border-zinc-800/50 pt-4">
+                      <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 mb-3 ml-1">Emergency Contact</p>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name</label>
+                          <input value={profileData.parent2EmergencyName} onChange={(e) => updateProfile('parent2EmergencyName', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="Emergency contact" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Relationship</label>
+                          <input value={profileData.parent2EmergencyRelation} onChange={(e) => updateProfile('parent2EmergencyRelation', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="Relationship" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
+                          <input type="tel" value={profileData.parent2EmergencyPhone} onChange={(e) => updateProfile('parent2EmergencyPhone', e.target.value)}
+                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            placeholder="+1 (555) 000-0000" />
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* ===== SECTION C: Consent & Logistics ===== */}
+              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400 mb-6">
+                  <ShieldCheck size={16} /> C. Consent & Logistics
+                </h3>
+                <div className="space-y-5">
+                  <label className="flex items-start gap-3 group cursor-pointer">
+                    <div className="relative flex h-5 w-5 mt-0.5 items-center justify-center shrink-0">
+                      <input type="checkbox" className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                        checked={profileData.consentAcknowledged} onChange={(e) => updateProfile('consentAcknowledged', e.target.checked)} />
+                      <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">Informed Consent Acknowledged</span>
+                      <p className="text-xs text-zinc-600 mt-0.5">I have read and understood the informed consent for treatment.</p>
+                    </div>
+                  </label>
+
+                  <label className="flex items-start gap-3 group cursor-pointer">
+                    <div className="relative flex h-5 w-5 mt-0.5 items-center justify-center shrink-0">
+                      <input type="checkbox" className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                        checked={profileData.confidentialityExplained} onChange={(e) => updateProfile('confidentialityExplained', e.target.checked)} />
+                      <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                    </div>
+                    <div>
+                      <span className="text-sm font-medium text-zinc-300 group-hover:text-white transition-colors">Confidentiality Limits Explained</span>
+                      <p className="text-xs text-zinc-600 mt-0.5">I understand confidentiality limits including harm to self/others, abuse, and court orders.</p>
+                    </div>
+                  </label>
+
+                  <div className="border-t border-zinc-800/50 pt-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Session Format</label>
+                        <select value={profileData.sessionFormat} onChange={(e) => updateProfile('sessionFormat', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                          <option value="">Select format...</option>
+                          <option value="in-person">In-Person</option>
+                          <option value="telehealth">Telehealth</option>
+                          <option value="hybrid">Hybrid (Both)</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Payment / Insurance Info</label>
+                        <input value={profileData.paymentInfo} onChange={(e) => updateProfile('paymentInfo', e.target.value)}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Insurance provider or self-pay" />
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Save Profile Button */}
+              <button onClick={saveProfileData}
+                className={`w-full rounded-2xl py-4 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                  profileSaved
+                    ? 'bg-emerald-600 shadow-emerald-500/20'
+                    : 'bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-500'
+                }`}>
+                {profileSaved ? <><Check size={18} /> Profile Saved!</> : <><Save size={18} /> Save Profile</>}
+              </button>
 
               {/* Provider: Create Task Form */}
               {currentUser.role === 'provider' && (

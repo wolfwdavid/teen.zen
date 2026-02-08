@@ -51,8 +51,23 @@ def init_db():
             text TEXT NOT NULL,
             sources TEXT,
             timing REAL,
+            hidden BOOLEAN DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_archives (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            provider_id INTEGER,
+            quarter TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            message_count INTEGER DEFAULT 0,
+            archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (provider_id) REFERENCES users(id)
         )
     ''')
 
@@ -69,6 +84,7 @@ def migrate_db():
     migrations = [
         ("ALTER TABLE users ADD COLUMN pin_expires_at TEXT", "pin_expires_at"),
         ("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'", "role"),
+        ("ALTER TABLE chat_messages ADD COLUMN hidden BOOLEAN DEFAULT 0", "hidden"),
     ]
 
     for sql, name in migrations:
@@ -102,8 +118,23 @@ def migrate_db():
             text TEXT NOT NULL,
             sources TEXT,
             timing REAL,
+            hidden BOOLEAN DEFAULT 0,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_archives (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            provider_id INTEGER,
+            quarter TEXT NOT NULL,
+            year INTEGER NOT NULL,
+            message_count INTEGER DEFAULT 0,
+            archived_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id),
+            FOREIGN KEY (provider_id) REFERENCES users(id)
         )
     ''')
 

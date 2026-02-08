@@ -3,7 +3,8 @@ import {
   Check, X, Clock, Bot, User, Send, StopCircle, MessageSquare,
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
-  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save
+  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save,
+  ChevronLeft, ChevronRight, Archive
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -34,8 +35,14 @@ const NGROK_HEADERS = {
 };
 
 // --- Chat Message Component ---
-const ChatMessage = ({ type, text, sources = [], timing, error, profilePic }) => {
+const ChatMessage = ({ type, text, sources = [], timing, error, profilePic, created_at }) => {
   const isUser = type === 'user';
+  const timeStr = created_at ? (() => {
+    try {
+      const d = new Date(created_at);
+      return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+    } catch { return ''; }
+  })() : '';
   return (
     <div className={`group flex w-full flex-col ${isUser ? 'items-end' : 'items-start'} mb-8`}>
       <div className={`flex max-w-[85%] gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
@@ -58,11 +65,14 @@ const ChatMessage = ({ type, text, sources = [], timing, error, profilePic }) =>
           ) : (
             <div className="whitespace-pre-wrap leading-relaxed">{text || (isUser ? "" : "...")}</div>
           )}
-          {timing && (
-            <div className={`mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold border-t border-white/5 pt-2 ${isUser ? 'text-indigo-200' : 'text-zinc-500'}`}>
-              <Clock size={12} className={isUser ? "text-indigo-200" : "text-amber-400"} /> <span>{timing}s</span>
-            </div>
-          )}
+          <div className={`mt-1 flex items-center gap-3 text-[10px] uppercase tracking-wider font-bold border-t border-white/5 pt-2 ${isUser ? 'text-indigo-200' : 'text-zinc-500'}`}>
+            {timeStr && <span>{timeStr}</span>}
+            {timing && (
+              <span className="flex items-center gap-1">
+                <Clock size={10} className={isUser ? "text-indigo-200" : "text-amber-400"} /> {timing}s
+              </span>
+            )}
+          </div>
         </div>
       </div>
       {!isUser && sources.length > 0 && (
@@ -85,6 +95,9 @@ export default function App() {
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamError, setStreamError] = useState(null);
+  const [currentQuarter, setCurrentQuarter] = useState(null);
+  const [viewingQuarter, setViewingQuarter] = useState(null);
+  const [availableQuarters, setAvailableQuarters] = useState([]);
   const [backend, setBackend] = useState({ status: "checking", detail: "" });
   const [currentUser, setCurrentUser] = useState(null);
   const [authToken, setAuthToken] = useState(null);
@@ -170,21 +183,36 @@ export default function App() {
     }
   }, [authToken]);
 
-  const loadChatHistory = async () => {
+  const loadChatHistory = async (year = null, quarter = null) => {
     try {
-      const res = await fetch(joinUrl(API_BASE, "/api/chat/history"), {
-        headers: authHeaders(authToken)
-      });
+      let url = joinUrl(API_BASE, "/api/chat/history");
+      const params = [];
+      if (year) params.push(`year=${year}`);
+      if (quarter) params.push(`quarter=${quarter}`);
+      if (params.length) url += `?${params.join('&')}`;
+
+      const res = await fetch(url, { headers: authHeaders(authToken) });
       if (res.ok) {
         const data = await res.json();
+        if (data.current_quarter) setCurrentQuarter(data.current_quarter);
+        if (data.viewing) setViewingQuarter(data.viewing);
         if (data.messages && data.messages.length > 0) {
           setMessages(data.messages.map(m => ({
             type: m.type,
             text: m.text,
             sources: m.sources || [],
-            timing: m.timing
+            timing: m.timing,
+            created_at: m.created_at
           })));
+        } else {
+          setMessages([]);
         }
+      }
+      // Also load available quarters
+      const qRes = await fetch(joinUrl(API_BASE, "/api/chat/quarters"), { headers: authHeaders(authToken) });
+      if (qRes.ok) {
+        const qData = await qRes.json();
+        setAvailableQuarters(qData.quarters || []);
       }
     } catch (e) {
       console.error("Failed to load chat history:", e);
@@ -206,6 +234,7 @@ export default function App() {
 
   const handleClearHistory = async () => {
     if (!authToken) return;
+    if (!confirm("This will clear the current chat view. Your history is preserved in archives.")) return;
     try {
       await fetch(joinUrl(API_BASE, "/api/chat/history"), {
         method: "DELETE",
@@ -215,6 +244,59 @@ export default function App() {
     } catch (e) {
       console.error("Failed to clear history:", e);
     }
+  };
+
+  const navigateQuarter = (direction) => {
+    if (!viewingQuarter) return;
+    let { year, quarter } = viewingQuarter;
+    if (direction === 'prev') {
+      quarter -= 1;
+      if (quarter < 1) { quarter = 4; year -= 1; }
+    } else {
+      quarter += 1;
+      if (quarter > 4) { quarter = 1; year += 1; }
+    }
+    setViewingQuarter({ year, quarter });
+    loadChatHistory(year, quarter);
+  };
+
+  const goToCurrentQuarter = () => {
+    if (currentQuarter) {
+      setViewingQuarter(currentQuarter);
+      loadChatHistory(currentQuarter.year, currentQuarter.quarter);
+    }
+  };
+
+  const quarterLabel = (q) => {
+    if (!q) return '';
+    const names = { 1: 'Jan–Mar', 2: 'Apr–Jun', 3: 'Jul–Sep', 4: 'Oct–Dec' };
+    return `Q${q.quarter} ${q.year} (${names[q.quarter]})`;
+  };
+
+  // Group messages by date
+  const groupMessagesByDate = (msgs) => {
+    const groups = [];
+    let lastDate = null;
+    for (const msg of msgs) {
+      const dateStr = msg.created_at?.substring(0, 10) || '';
+      if (dateStr && dateStr !== lastDate) {
+        lastDate = dateStr;
+        groups.push({ type: 'date-header', date: dateStr });
+      }
+      groups.push(msg);
+    }
+    return groups;
+  };
+
+  const formatDateHeader = (dateStr) => {
+    try {
+      const d = new Date(dateStr + 'T00:00:00');
+      const today = new Date(); today.setHours(0,0,0,0);
+      const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
+      if (d.getTime() === today.getTime()) return 'Today';
+      if (d.getTime() === yesterday.getTime()) return 'Yesterday';
+      return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+    } catch { return dateStr; }
   };
 
   // Profile picture & data
@@ -570,10 +652,10 @@ export default function App() {
     setIsLoading(true);
     setStreamError(null);
 
-    setMessages(prev => [...prev, { type: "user", text: userQuery }]);
+    setMessages(prev => [...prev, { type: "user", text: userQuery, created_at: new Date().toISOString() }]);
     saveChatMessage("user", userQuery);
 
-    let chatbotMsg = { type: 'chatbot', text: '', sources: [], timing: null, error: null };
+    let chatbotMsg = { type: 'chatbot', text: '', sources: [], timing: null, error: null, created_at: new Date().toISOString() };
     setMessages(prev => [...prev, chatbotMsg]);
 
     const ac = new AbortController();
@@ -722,8 +804,33 @@ export default function App() {
         {/* ==================== CHAT VIEW ==================== */}
         {view === 'chat' && (
           <>
-            <div className="flex-1 overflow-y-auto px-4 py-8">
+            <div className="flex-1 overflow-y-auto px-4 py-4">
               <div className="mx-auto max-w-3xl">
+                {/* Quarter Navigation */}
+                {currentUser && viewingQuarter && (
+                  <div className="flex items-center justify-between mb-4 px-2">
+                    <button onClick={() => navigateQuarter('prev')}
+                      className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold transition-colors">
+                      <ChevronLeft size={14} /> Prev
+                    </button>
+                    <div className="flex items-center gap-2">
+                      <span className="text-[11px] font-bold text-zinc-400 uppercase tracking-widest">
+                        {quarterLabel(viewingQuarter)}
+                      </span>
+                      {currentQuarter && (viewingQuarter.year !== currentQuarter.year || viewingQuarter.quarter !== currentQuarter.quarter) && (
+                        <button onClick={goToCurrentQuarter}
+                          className="text-[9px] text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider transition-colors ml-2">
+                          Current →
+                        </button>
+                      )}
+                    </div>
+                    <button onClick={() => navigateQuarter('next')}
+                      className="flex items-center gap-1 text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold transition-colors">
+                      Next <ChevronRight size={14} />
+                    </button>
+                  </div>
+                )}
+
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900 ring-1 ring-zinc-800 shadow-inner">
@@ -732,17 +839,33 @@ export default function App() {
                     <h2 className="text-2xl font-bold text-zinc-100">How can I help you today?</h2>
                     <p className="mt-2 max-w-md text-zinc-500 text-sm">Ask anything about your documents or provide a prompt to start.</p>
                     {!currentUser && <p className="mt-4 text-xs text-zinc-600">Sign in to save your chat history.</p>}
+                    {currentUser && viewingQuarter && (
+                      <p className="mt-4 text-xs text-zinc-600">No messages this quarter.</p>
+                    )}
                   </div>
                 ) : (
                   <>
                     {currentUser && messages.length > 0 && (
                       <div className="flex justify-end mb-4">
                         <button onClick={handleClearHistory} className="flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-red-400 uppercase tracking-wider font-bold transition-colors">
-                          <Trash2 size={12} /> Clear History
+                          <Trash2 size={12} /> Clear View
                         </button>
                       </div>
                     )}
-                    {messages.map((m, i) => <ChatMessage key={i} {...m} profilePic={profilePic} />)}
+                    {groupMessagesByDate(messages).map((item, i) => {
+                      if (item.type === 'date-header') {
+                        return (
+                          <div key={`date-${i}`} className="flex items-center gap-3 my-6">
+                            <div className="flex-1 h-px bg-zinc-800/50" />
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 px-3 py-1 rounded-full bg-zinc-900/50 border border-zinc-800/50">
+                              {formatDateHeader(item.date)}
+                            </span>
+                            <div className="flex-1 h-px bg-zinc-800/50" />
+                          </div>
+                        );
+                      }
+                      return <ChatMessage key={i} {...item} profilePic={profilePic} />;
+                    })}
                   </>
                 )}
                 <div ref={messagesEndRef} className="h-4" />
@@ -820,6 +943,116 @@ export default function App() {
                     </span>
                   </div>
                 </div>
+              </div>
+
+              {/* ===== MY DAILY TASKS (Dashboard) ===== */}
+              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400">
+                    <ClipboardList size={16} /> {currentUser.role === 'provider' ? 'Assigned Tasks' : 'My Daily Tasks'}
+                  </h3>
+                  <button onClick={loadTasks} className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold flex items-center gap-1 transition-colors">
+                    <RefreshCw size={12} /> Refresh
+                  </button>
+                </div>
+
+                {tasksLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 size={24} className="animate-spin text-zinc-600" />
+                  </div>
+                ) : tasks.length === 0 ? (
+                  <div className="text-center py-8">
+                    <ClipboardList size={40} className="mx-auto text-zinc-800 mb-3" />
+                    <p className="text-zinc-500 text-sm">
+                      {currentUser.role === 'provider' ? "You haven't assigned any tasks yet." : "No tasks assigned to you yet."}
+                    </p>
+                    <p className="text-zinc-600 text-xs mt-1">
+                      {currentUser.role === 'provider' ? "Use the form below to assign tasks to users." : "Your provider will assign tasks here."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {tasks.map(task => (
+                      <div key={task.id}
+                        className={`flex items-start gap-4 rounded-2xl border p-5 transition-all ${
+                          task.status === 'completed'
+                            ? 'border-emerald-900/30 bg-emerald-500/5'
+                            : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
+                        }`}>
+                        {currentUser.role === 'user' && (
+                          <button onClick={() => handleToggleTask(task.id, task.status)}
+                            className={`mt-0.5 shrink-0 transition-colors ${task.status === 'completed' ? 'text-emerald-400' : 'text-zinc-600 hover:text-indigo-400'}`}>
+                            {task.status === 'completed' ? <CheckCircle2 size={22} /> : <Circle size={22} />}
+                          </button>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-zinc-500 line-through' : 'text-zinc-100'}`}>
+                            {task.title}
+                          </p>
+                          {task.description && (
+                            <p className="text-xs text-zinc-500 mt-1">{task.description}</p>
+                          )}
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">
+                              {currentUser.role === 'provider' ? `→ ${task.assigned_to_name}` : `From: ${task.assigned_by_name}`}
+                            </span>
+                            {task.due_date && (
+                              <span className="flex items-center gap-1 text-[10px] text-zinc-600 uppercase tracking-wider">
+                                <Calendar size={10} /> {task.due_date}
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                              task.status === 'completed'
+                                ? 'bg-emerald-500/10 text-emerald-400'
+                                : 'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              {task.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Provider: Assign Task Form (inline) */}
+                {currentUser.role === 'provider' && (
+                  <div className="mt-6 pt-6 border-t border-zinc-800/50">
+                    <h4 className="flex items-center gap-2 text-xs font-bold uppercase tracking-widest text-amber-400 mb-4">
+                      <Plus size={14} /> Assign a New Task
+                    </h4>
+                    <form onSubmit={handleCreateTask} className="space-y-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <input value={newTask.title} onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Task title" required />
+                        <select value={newTask.assigned_to} onChange={(e) => setNewTask({...newTask, assigned_to: e.target.value})}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" required>
+                          <option value="">Assign to...</option>
+                          {usersList.map(u => (
+                            <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <textarea value={newTask.description} onChange={(e) => setNewTask({...newTask, description: e.target.value})}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700 resize-none h-16"
+                        placeholder="Optional description..." />
+                      <div className="flex gap-3">
+                        <input type="date" value={newTask.due_date} onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
+                          className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                        <button type="submit"
+                          className="flex-1 rounded-xl bg-amber-600 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all flex items-center justify-center gap-2">
+                          <Plus size={14} /> Assign Task
+                        </button>
+                      </div>
+                      {taskError && (
+                        <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-400 ring-1 ring-red-500/20">
+                          <ShieldAlert size={14} /> <span>{taskError}</span>
+                        </div>
+                      )}
+                    </form>
+                  </div>
+                )}
               </div>
 
               {/* ===== SECTION A: Identifying Information ===== */}
@@ -1124,125 +1357,6 @@ export default function App() {
                 {profileSaved ? <><Check size={18} /> Profile Saved!</> : <><Save size={18} /> Save Profile</>}
               </button>
 
-              {/* Provider: Create Task Form */}
-              {currentUser.role === 'provider' && (
-                <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
-                  <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-6">
-                    <Plus size={16} /> Assign a Task
-                  </h3>
-                  <form onSubmit={handleCreateTask} className="space-y-4">
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Task Title</label>
-                      <input value={newTask.title} onChange={(e) => setNewTask({...newTask, title: e.target.value})}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
-                        placeholder="e.g. Complete daily journal entry" required />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Description</label>
-                      <textarea value={newTask.description} onChange={(e) => setNewTask({...newTask, description: e.target.value})}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700 resize-none h-20"
-                        placeholder="Optional task details..." />
-                    </div>
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Assign To</label>
-                        <select value={newTask.assigned_to} onChange={(e) => setNewTask({...newTask, assigned_to: e.target.value})}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" required>
-                          <option value="">Select user...</option>
-                          {usersList.map(u => (
-                            <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="space-y-1">
-                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Due Date</label>
-                        <input type="date" value={newTask.due_date} onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
-                      </div>
-                    </div>
-                    {taskError && (
-                      <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
-                        <ShieldAlert size={14} /> <span>{taskError}</span>
-                      </div>
-                    )}
-                    <button type="submit"
-                      className="w-full rounded-xl bg-amber-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all flex items-center justify-center gap-2">
-                      <Plus size={16} /> Assign Task
-                    </button>
-                  </form>
-                </div>
-              )}
-
-              {/* Daily Tasks */}
-              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
-                <div className="flex items-center justify-between mb-6">
-                  <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400">
-                    <ClipboardList size={16} /> {currentUser.role === 'provider' ? 'Assigned Tasks' : 'My Daily Tasks'}
-                  </h3>
-                  <button onClick={loadTasks} className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold flex items-center gap-1 transition-colors">
-                    <RefreshCw size={12} /> Refresh
-                  </button>
-                </div>
-
-                {tasksLoading ? (
-                  <div className="flex items-center justify-center py-12">
-                    <Loader2 size={24} className="animate-spin text-zinc-600" />
-                  </div>
-                ) : tasks.length === 0 ? (
-                  <div className="text-center py-12">
-                    <ClipboardList size={48} className="mx-auto text-zinc-800 mb-4" />
-                    <p className="text-zinc-500 text-sm">
-                      {currentUser.role === 'provider' ? "You haven't assigned any tasks yet." : "No tasks assigned to you yet."}
-                    </p>
-                    <p className="text-zinc-600 text-xs mt-1">
-                      {currentUser.role === 'provider' ? "Use the form above to assign tasks to users." : "Your provider will assign tasks here."}
-                    </p>
-                  </div>
-                ) : (
-                  <div className="space-y-3">
-                    {tasks.map(task => (
-                      <div key={task.id}
-                        className={`flex items-start gap-4 rounded-2xl border p-5 transition-all ${
-                          task.status === 'completed'
-                            ? 'border-emerald-900/30 bg-emerald-500/5'
-                            : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
-                        }`}>
-                        {currentUser.role === 'user' && (
-                          <button onClick={() => handleToggleTask(task.id, task.status)}
-                            className={`mt-0.5 shrink-0 transition-colors ${task.status === 'completed' ? 'text-emerald-400' : 'text-zinc-600 hover:text-indigo-400'}`}>
-                            {task.status === 'completed' ? <CheckCircle2 size={22} /> : <Circle size={22} />}
-                          </button>
-                        )}
-                        <div className="flex-1 min-w-0">
-                          <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-zinc-500 line-through' : 'text-zinc-100'}`}>
-                            {task.title}
-                          </p>
-                          {task.description && (
-                            <p className="text-xs text-zinc-500 mt-1">{task.description}</p>
-                          )}
-                          <div className="flex items-center gap-3 mt-2">
-                            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">
-                              {currentUser.role === 'provider' ? `→ ${task.assigned_to_name}` : `From: ${task.assigned_by_name}`}
-                            </span>
-                            {task.due_date && (
-                              <span className="flex items-center gap-1 text-[10px] text-zinc-600 uppercase tracking-wider">
-                                <Calendar size={10} /> {task.due_date}
-                              </span>
-                            )}
-                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
-                              task.status === 'completed'
-                                ? 'bg-emerald-500/10 text-emerald-400'
-                                : 'bg-amber-500/10 text-amber-400'
-                            }`}>
-                              {task.status}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
             </div>
           </div>
         )}

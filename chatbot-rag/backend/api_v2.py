@@ -3,10 +3,10 @@ import logging
 import json
 import chain_v2
 from typing import Optional
-from datetime import timedelta
+from datetime import timedelta, datetime
 from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, EmailStr, validator
 from auth import (
     create_user,
@@ -22,6 +22,12 @@ from auth import (
     save_chat_message,
     get_chat_history,
     clear_chat_history,
+    get_available_quarters,
+    get_current_quarter,
+    get_chat_history_for_archive,
+    create_archive_record,
+    get_archives_for_provider,
+    get_provider_for_user,
     create_task,
     get_tasks_for_user,
     get_tasks_assigned_by,
@@ -63,17 +69,17 @@ def get_current_user(authorization: str = Header(None)):
     """Extract user from JWT token in Authorization header"""
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Not authenticated")
-    
+
     token = authorization.replace("Bearer ", "")
     payload = decode_access_token(token)
-    
+
     if not payload:
         raise HTTPException(status_code=401, detail="Invalid or expired token")
-    
+
     user = get_user_by_id(payload.get("user_id"))
     if not user:
         raise HTTPException(status_code=401, detail="User not found")
-    
+
     return user
 
 
@@ -328,10 +334,30 @@ async def get_profile(authorization: str = Header(None)):
 
 # --- CHAT HISTORY ENDPOINTS ---
 @app.get("/api/chat/history")
-async def get_history(authorization: str = Header(None)):
+async def get_history(
+    authorization: str = Header(None),
+    year: Optional[int] = None,
+    quarter: Optional[int] = None
+):
     user = get_current_user(authorization)
-    messages = get_chat_history(user['id'])
-    return {"messages": messages}
+    messages = get_chat_history(user['id'], year, quarter)
+    cy, cq = get_current_quarter()
+    return {
+        "messages": messages,
+        "current_quarter": {"year": cy, "quarter": cq},
+        "viewing": {"year": year or cy, "quarter": quarter or cq}
+    }
+
+
+@app.get("/api/chat/quarters")
+async def get_quarters(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    quarters = get_available_quarters(user['id'])
+    cy, cq = get_current_quarter()
+    return {
+        "quarters": quarters,
+        "current": {"year": cy, "quarter": cq}
+    }
 
 
 @app.post("/api/chat/history")
@@ -343,9 +369,165 @@ async def save_message(request: SaveChatRequest, authorization: str = Header(Non
 
 @app.delete("/api/chat/history")
 async def delete_history(authorization: str = Header(None)):
+    """Soft-clear: hides current quarter messages (does NOT permanently delete)"""
     user = get_current_user(authorization)
     clear_chat_history(user['id'])
-    return {"success": True, "message": "Chat history cleared"}
+    return {"success": True, "message": "Chat view cleared (history preserved in archives)"}
+
+
+# --- ARCHIVE ENDPOINTS ---
+@app.post("/api/chat/archive")
+async def archive_quarter(
+    authorization: str = Header(None),
+    year: Optional[int] = None,
+    quarter: Optional[int] = None
+):
+    """Archive a quarter's chat. Auto-archives previous quarter if none specified."""
+    user = get_current_user(authorization)
+
+    if year is None or quarter is None:
+        cy, cq = get_current_quarter()
+        # Archive the previous quarter
+        if cq == 1:
+            year, quarter = cy - 1, 4
+        else:
+            year, quarter = cy, cq - 1
+
+    messages = get_chat_history_for_archive(user['id'], year, quarter)
+    if not messages:
+        return {"success": False, "message": "No messages to archive for this quarter"}
+
+    provider_id = get_provider_for_user(user['id'])
+
+    archive_id = create_archive_record(
+        user_id=user['id'],
+        provider_id=provider_id,
+        quarter=quarter,
+        year=year,
+        message_count=len(messages)
+    )
+
+    return {
+        "success": True,
+        "archive_id": archive_id,
+        "message": f"Archived Q{quarter} {year} ({len(messages)} messages)",
+        "quarter": quarter,
+        "year": year
+    }
+
+
+@app.get("/api/archives")
+async def get_archives(authorization: str = Header(None)):
+    """Provider: get all archived chat transcripts"""
+    user = get_current_user(authorization)
+
+    if user.get('role') != 'provider':
+        raise HTTPException(status_code=403, detail="Only providers can view archives")
+
+    archives = get_archives_for_provider(user['id'])
+    return {"archives": archives}
+
+
+@app.get("/api/archives/{user_id}/{year}/{quarter}/pdf")
+async def get_archive_pdf(
+    user_id: int,
+    year: int,
+    quarter: int,
+    authorization: str = Header(None)
+):
+    """Generate PDF of a user's archived chat for a given quarter"""
+    provider = get_current_user(authorization)
+
+    if provider.get('role') != 'provider':
+        raise HTTPException(status_code=403, detail="Only providers can download archives")
+
+    target_user = get_user_by_id(user_id)
+    if not target_user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    messages = get_chat_history_for_archive(user_id, year, quarter)
+    if not messages:
+        raise HTTPException(status_code=404, detail="No messages for this quarter")
+
+    # Generate simple PDF using reportlab if available, otherwise return text
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.colors import HexColor
+        import io
+
+        buffer = io.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=50, bottomMargin=50)
+        styles = getSampleStyleSheet()
+
+        title_style = ParagraphStyle('Title2', parent=styles['Title'], fontSize=18, textColor=HexColor('#4F46E5'))
+        meta_style = ParagraphStyle('Meta', parent=styles['Normal'], fontSize=10, textColor=HexColor('#71717A'))
+        user_style = ParagraphStyle('UserMsg', parent=styles['Normal'], fontSize=11,
+                                     backColor=HexColor('#EEF2FF'), leftIndent=20, rightIndent=20,
+                                     spaceBefore=8, spaceAfter=4, borderPadding=8)
+        bot_style = ParagraphStyle('BotMsg', parent=styles['Normal'], fontSize=11,
+                                    leftIndent=20, rightIndent=20, spaceBefore=4, spaceAfter=8,
+                                    borderPadding=8)
+        date_style = ParagraphStyle('DateHeader', parent=styles['Normal'], fontSize=9,
+                                     textColor=HexColor('#A1A1AA'), alignment=1, spaceBefore=16, spaceAfter=8)
+
+        elements = []
+        elements.append(Paragraph(f"Chat Archive — Q{quarter} {year}", title_style))
+        elements.append(Spacer(1, 4))
+        elements.append(Paragraph(f"User: {target_user['username']} ({target_user['email']})", meta_style))
+        elements.append(Paragraph(f"Generated: {datetime.utcnow().strftime('%B %d, %Y at %H:%M UTC')}", meta_style))
+        elements.append(Paragraph(f"Total Messages: {len(messages)}", meta_style))
+        elements.append(Spacer(1, 20))
+
+        current_date = None
+        for msg in messages:
+            msg_date = msg['created_at'][:10] if msg.get('created_at') else 'Unknown'
+            if msg_date != current_date:
+                current_date = msg_date
+                try:
+                    dt = datetime.strptime(msg_date, '%Y-%m-%d')
+                    elements.append(Paragraph(dt.strftime('%A, %B %d, %Y'), date_style))
+                except:
+                    elements.append(Paragraph(msg_date, date_style))
+
+            role_label = "USER" if msg['role'] == 'user' else "CHATBOT"
+            time_str = msg['created_at'][11:16] if msg.get('created_at') and len(msg['created_at']) > 16 else ''
+            text = msg.get('text', '').replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+
+            style = user_style if msg['role'] == 'user' else bot_style
+            elements.append(Paragraph(f"<b>{role_label}</b> {time_str}<br/>{text}", style))
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        filename = f"chat_archive_{target_user['username']}_Q{quarter}_{year}.pdf"
+        return Response(
+            content=buffer.read(),
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+
+    except ImportError:
+        # Fallback: return as plain text if reportlab not installed
+        lines = [f"Chat Archive — Q{quarter} {year}"]
+        lines.append(f"User: {target_user['username']} ({target_user['email']})")
+        lines.append(f"Generated: {datetime.utcnow().isoformat()}")
+        lines.append(f"Messages: {len(messages)}")
+        lines.append("=" * 60)
+
+        for msg in messages:
+            role = "USER" if msg['role'] == 'user' else "BOT"
+            ts = msg.get('created_at', '')
+            lines.append(f"\n[{ts}] {role}: {msg.get('text', '')}")
+
+        content = "\n".join(lines)
+        filename = f"chat_archive_{target_user['username']}_Q{quarter}_{year}.txt"
+        return Response(
+            content=content,
+            media_type="text/plain",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
 
 
 # --- TASK ENDPOINTS ---

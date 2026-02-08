@@ -1020,6 +1020,7 @@ export default function App() {
                 </svg>
                 Sign in with Google
               </button>
+              <div id="google-signin-fallback" className="w-full"></div>
 
               <div className="flex items-center gap-3">
                 <div className="flex-1 h-px bg-zinc-800"></div>

@@ -4,7 +4,7 @@ import json
 import chain_v2
 from typing import Optional
 from datetime import timedelta
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, EmailStr, validator
@@ -15,8 +15,18 @@ from auth import (
     verify_email_pin,
     resend_verification_pin,
     create_access_token,
+    decode_access_token,
     verify_google_token,
     get_or_create_google_user,
+    get_user_by_id,
+    save_chat_message,
+    get_chat_history,
+    clear_chat_history,
+    create_task,
+    get_tasks_for_user,
+    get_tasks_assigned_by,
+    update_task_status,
+    get_all_users_for_provider,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_user_by_email
 )
@@ -34,7 +44,7 @@ app = FastAPI(title='RAG Chatbot – V2')
 @app.on_event("startup")
 async def startup_event():
     logger.info("🚀 Starting up API server...")
-    migrate_db()  # Ensure database has latest schema
+    migrate_db()
     chain_v2.initialize_global_vars()
     logger.info("✅ RAG chain initialized and ready for requests.")
 
@@ -47,6 +57,26 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+# --- HELPERS ---
+def get_current_user(authorization: str = Header(None)):
+    """Extract user from JWT token in Authorization header"""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Not authenticated")
+    
+    token = authorization.replace("Bearer ", "")
+    payload = decode_access_token(token)
+    
+    if not payload:
+        raise HTTPException(status_code=401, detail="Invalid or expired token")
+    
+    user = get_user_by_id(payload.get("user_id"))
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
+    
+    return user
+
+
 # --- MODELS ---
 class ChatRequest(BaseModel):
     question: str
@@ -58,6 +88,7 @@ class RegisterRequest(BaseModel):
     password: str
     confirm_password: str
     age: int
+    role: str = "user"
     phone: Optional[str] = None
 
     @validator('username')
@@ -90,6 +121,12 @@ class RegisterRequest(BaseModel):
             raise ValueError('Invalid age')
         return v
 
+    @validator('role')
+    def role_valid(cls, v):
+        if v not in ('user', 'provider'):
+            raise ValueError('Role must be user or provider')
+        return v
+
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -115,31 +152,57 @@ class GoogleAuthRequest(BaseModel):
     token: str
 
 
+class CreateTaskRequest(BaseModel):
+    title: str
+    description: str = ""
+    assigned_to: int
+    due_date: Optional[str] = None
+
+    @validator('title')
+    def title_valid(cls, v):
+        if len(v) < 1:
+            raise ValueError('Title is required')
+        return v
+
+
+class UpdateTaskRequest(BaseModel):
+    status: str
+
+    @validator('status')
+    def status_valid(cls, v):
+        if v not in ('pending', 'completed'):
+            raise ValueError('Status must be pending or completed')
+        return v
+
+
+class SaveChatRequest(BaseModel):
+    role: str
+    text: str
+    sources: Optional[str] = None
+    timing: Optional[float] = None
+
+
 # --- AUTH ENDPOINTS ---
 @app.post("/api/auth/google")
 async def google_auth(request: GoogleAuthRequest):
-    """Authenticate with Google OAuth token"""
     try:
-        # Verify the Google token
         google_info = verify_google_token(request.token)
-        
-        # Get or create user
         user = get_or_create_google_user(google_info)
-        
-        # Create JWT token
+
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
             data={"sub": user['email'], "user_id": user['id']},
             expires_delta=access_token_expires
         )
-        
+
         return {
             "access_token": access_token,
             "token_type": "bearer",
             "user": {
                 "id": user['id'],
                 "username": user['username'],
-                "email": user['email']
+                "email": user['email'],
+                "role": user.get('role', 'user')
             }
         }
     except ValueError as e:
@@ -151,12 +214,12 @@ async def google_auth(request: GoogleAuthRequest):
 
 @app.post("/api/auth/register")
 async def register(request: RegisterRequest):
-    """Register a new user and send verification PIN via email"""
     try:
         user = create_user(
             username=request.username,
             email=request.email,
             password=request.password,
+            role=request.role,
             age=request.age,
             phone=request.phone
         )
@@ -167,7 +230,8 @@ async def register(request: RegisterRequest):
             "user": {
                 "id": user['id'],
                 "username": user['username'],
-                "email": user['email']
+                "email": user['email'],
+                "role": user.get('role', 'user')
             },
             "email_sent": user.get('email_sent', False)
         }
@@ -180,13 +244,10 @@ async def register(request: RegisterRequest):
 
 @app.post("/api/auth/verify-pin")
 async def verify_pin(request: VerifyPinRequest):
-    """Verify email with 6-digit PIN"""
     try:
         success = verify_email_pin(request.email, request.pin)
-
         if not success:
             raise HTTPException(status_code=400, detail="Invalid verification code")
-
         return {"success": True, "message": "Email verified successfully! You can now sign in."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -199,13 +260,10 @@ async def verify_pin(request: VerifyPinRequest):
 
 @app.post("/api/auth/resend-pin")
 async def resend_pin(request: ResendPinRequest):
-    """Resend verification PIN to email"""
     try:
         success = resend_verification_pin(request.email)
-
         if not success:
             raise HTTPException(status_code=500, detail="Failed to send verification email")
-
         return {"success": True, "message": "A new verification code has been sent to your email."}
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -218,7 +276,6 @@ async def resend_pin(request: ResendPinRequest):
 
 @app.post("/api/auth/login")
 async def login(request: LoginRequest):
-    """Login user and return JWT token"""
     user = authenticate_user(request.email, request.password)
 
     if not user:
@@ -239,20 +296,111 @@ async def login(request: LoginRequest):
         "user": {
             "id": user['id'],
             "username": user['username'],
-            "email": user['email']
+            "email": user['email'],
+            "role": user.get('role', 'user')
         }
     }
 
 
 @app.get("/api/auth/verify-email/{token}")
 async def verify_email(token: str):
-    """Verify user email with token (legacy)"""
     success = verify_email_token(token)
-
     if not success:
         raise HTTPException(status_code=400, detail="Invalid or expired token")
-
     return {"success": True, "message": "Email verified successfully!"}
+
+
+# --- PROFILE ENDPOINT ---
+@app.get("/api/profile")
+async def get_profile(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    return {
+        "id": user['id'],
+        "username": user['username'],
+        "email": user['email'],
+        "role": user.get('role', 'user'),
+        "age": user.get('age'),
+        "phone": user.get('phone'),
+        "created_at": user.get('created_at'),
+        "last_login": user.get('last_login')
+    }
+
+
+# --- CHAT HISTORY ENDPOINTS ---
+@app.get("/api/chat/history")
+async def get_history(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    messages = get_chat_history(user['id'])
+    return {"messages": messages}
+
+
+@app.post("/api/chat/history")
+async def save_message(request: SaveChatRequest, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    save_chat_message(user['id'], request.role, request.text, request.sources, request.timing)
+    return {"success": True}
+
+
+@app.delete("/api/chat/history")
+async def delete_history(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    clear_chat_history(user['id'])
+    return {"success": True, "message": "Chat history cleared"}
+
+
+# --- TASK ENDPOINTS ---
+@app.get("/api/tasks")
+async def get_tasks(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    role = user.get('role', 'user')
+
+    if role == 'provider':
+        tasks = get_tasks_assigned_by(user['id'])
+    else:
+        tasks = get_tasks_for_user(user['id'])
+
+    return {"tasks": tasks, "role": role}
+
+
+@app.post("/api/tasks")
+async def create_new_task(request: CreateTaskRequest, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+
+    if user.get('role') != 'provider':
+        raise HTTPException(status_code=403, detail="Only providers can create tasks")
+
+    task_id = create_task(
+        title=request.title,
+        description=request.description,
+        assigned_by=user['id'],
+        assigned_to=request.assigned_to,
+        due_date=request.due_date
+    )
+
+    return {"success": True, "task_id": task_id, "message": "Task created successfully"}
+
+
+@app.put("/api/tasks/{task_id}")
+async def update_task(task_id: int, request: UpdateTaskRequest, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+
+    success = update_task_status(task_id, user['id'], request.status)
+    if not success:
+        raise HTTPException(status_code=404, detail="Task not found or not assigned to you")
+
+    return {"success": True, "message": f"Task marked as {request.status}"}
+
+
+@app.get("/api/users")
+async def get_users_list(authorization: str = Header(None)):
+    """Get list of users (for providers to assign tasks)"""
+    user = get_current_user(authorization)
+
+    if user.get('role') != 'provider':
+        raise HTTPException(status_code=403, detail="Only providers can view user list")
+
+    users = get_all_users_for_provider()
+    return {"users": users}
 
 
 # --- HEALTH & CHAT ENDPOINTS ---
@@ -273,7 +421,6 @@ async def chat(req: ChatRequest):
     try:
         if chain_v2.rag_chain is None:
             raise HTTPException(status_code=503, detail="RAG system not initialized")
-
         answer = chain_v2.rag_chain.invoke(req.question)
         return {"answer": answer}
     except Exception as e:
@@ -286,18 +433,13 @@ async def chat_stream(question: str = Query(...)):
     async def event_generator():
         try:
             logger.info(f"🔍 [Stream] Question: {question}")
-
             if chain_v2.rag_chain is None:
-                logger.error("❌ [Stream] RAG chain is None!")
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
 
-            logger.info("🤖 [Stream] Generating response...")
             answer = chain_v2.rag_chain.invoke(question)
-
             yield f"data: {json.dumps({'type': 'token', 'text': str(answer)})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
-
         except Exception as e:
             logger.error(f"💥 [Stream] Error: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

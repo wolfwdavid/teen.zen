@@ -6,7 +6,7 @@ DB_PATH = Path(__file__).parent / "users.db"
 
 
 def init_db():
-    """Initialize the database with users table"""
+    """Initialize the database with all tables"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
@@ -16,6 +16,7 @@ def init_db():
             username TEXT UNIQUE NOT NULL,
             email TEXT UNIQUE NOT NULL,
             password_hash TEXT NOT NULL,
+            role TEXT DEFAULT 'user',
             age INTEGER,
             phone TEXT,
             email_verified BOOLEAN DEFAULT 0,
@@ -26,24 +27,89 @@ def init_db():
         )
     ''')
 
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            assigned_by INTEGER NOT NULL,
+            assigned_to INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            due_date TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (assigned_by) REFERENCES users(id),
+            FOREIGN KEY (assigned_to) REFERENCES users(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            text TEXT NOT NULL,
+            sources TEXT,
+            timing REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
+
     conn.commit()
     conn.close()
-    print("✅ Database initialized")
+    print("✅ Database initialized with all tables")
 
 
 def migrate_db():
-    """Add new columns if they don't exist (safe to run multiple times)"""
+    """Add new columns/tables if they don't exist"""
     conn = sqlite3.connect(DB_PATH)
     cursor = conn.cursor()
 
-    try:
-        cursor.execute("ALTER TABLE users ADD COLUMN pin_expires_at TEXT")
-        print("✅ Added pin_expires_at column")
-    except sqlite3.OperationalError:
-        pass  # Column already exists
+    migrations = [
+        ("ALTER TABLE users ADD COLUMN pin_expires_at TEXT", "pin_expires_at"),
+        ("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'user'", "role"),
+    ]
+
+    for sql, name in migrations:
+        try:
+            cursor.execute(sql)
+            print(f"✅ Added {name}")
+        except sqlite3.OperationalError:
+            pass
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT NOT NULL,
+            description TEXT,
+            assigned_by INTEGER NOT NULL,
+            assigned_to INTEGER NOT NULL,
+            status TEXT DEFAULT 'pending',
+            due_date TEXT,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            completed_at TIMESTAMP,
+            FOREIGN KEY (assigned_by) REFERENCES users(id),
+            FOREIGN KEY (assigned_to) REFERENCES users(id)
+        )
+    ''')
+
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS chat_messages (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            role TEXT NOT NULL,
+            text TEXT NOT NULL,
+            sources TEXT,
+            timing REAL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id)
+        )
+    ''')
 
     conn.commit()
     conn.close()
+    print("✅ Migration complete")
 
 
 if __name__ == "__main__":

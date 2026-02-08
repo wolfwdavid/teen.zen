@@ -1,29 +1,11 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
 import { 
-  Check, 
-  X, 
-  Clock, 
-  Bot, 
-  User, 
-  Send, 
-  StopCircle, 
-  MessageSquare,
-  ShieldCheck,
-  Globe,
-  Terminal,
-  UserPlus,
-  ShieldAlert,
-  Eye,
-  EyeOff,
-  LogIn,
-  Mail,
-  ArrowLeft,
-  RefreshCw,
-  Loader2,
-  Menu
+  Check, X, Clock, Bot, User, Send, StopCircle, MessageSquare,
+  ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
+  LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
+  ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle
 } from 'lucide-react';
 
-// --- Configuration ---
 import API_BASE from "./api/apiBase";
 
 // --- Helpers ---
@@ -33,29 +15,32 @@ function joinUrl(base, path) {
   return `${b}/${p}`;
 }
 
+function authHeaders(token) {
+  return {
+    'Content-Type': 'application/json',
+    'ngrok-skip-browser-warning': 'true',
+    ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+  };
+}
+
 const NGROK_HEADERS = {
   'Content-Type': 'application/json',
   'ngrok-skip-browser-warning': 'true'
 };
 
-// --- Components ---
-
+// --- Chat Message Component ---
 const ChatMessage = ({ type, text, sources = [], timing, error }) => {
   const isUser = type === 'user';
-  
   return (
-    <div className={`group flex w-full flex-col ${isUser ? 'items-end' : 'items-start'} mb-8 animate-in fade-in slide-in-from-bottom-2 duration-300`}>
+    <div className={`group flex w-full flex-col ${isUser ? 'items-end' : 'items-start'} mb-8`}>
       <div className={`flex max-w-[85%] gap-3 ${isUser ? 'flex-row-reverse' : 'flex-row'}`}>
         <div className={`flex h-9 w-9 shrink-0 select-none items-center justify-center rounded-full border shadow-sm ${
           isUser ? 'bg-indigo-600 border-indigo-500 text-white' : 'bg-zinc-800 border-zinc-700 text-zinc-300'
         }`}>
           {isUser ? <User size={18} /> : <Bot size={18} />}
         </div>
-
         <div className={`relative flex flex-col gap-2 rounded-2xl px-4 py-3 text-sm shadow-sm ring-1 ${
-          isUser 
-            ? 'bg-indigo-600 text-white ring-indigo-500' 
-            : 'bg-zinc-900/50 text-zinc-100 ring-zinc-800 backdrop-blur-sm'
+          isUser ? 'bg-indigo-600 text-white ring-indigo-500' : 'bg-zinc-900/50 text-zinc-100 ring-zinc-800 backdrop-blur-sm'
         }`}>
           {error ? (
             <div className="flex items-center gap-2 text-red-300 font-medium">
@@ -64,24 +49,17 @@ const ChatMessage = ({ type, text, sources = [], timing, error }) => {
           ) : (
             <div className="whitespace-pre-wrap leading-relaxed">{text || (isUser ? "" : "...")}</div>
           )}
-
           {timing && (
             <div className={`mt-1 flex items-center gap-1.5 text-[10px] uppercase tracking-wider font-bold border-t border-white/5 pt-2 ${isUser ? 'text-indigo-200' : 'text-zinc-500'}`}>
-              <Clock size={12} className={isUser ? "text-indigo-200" : "text-amber-400"} />
-              <span>{timing}s latency</span>
+              <Clock size={12} className={isUser ? "text-indigo-200" : "text-amber-400"} /> <span>{timing}s</span>
             </div>
           )}
         </div>
       </div>
-
       {!isUser && sources.length > 0 && (
         <div className="mt-3 flex flex-wrap gap-2 pl-12">
           {sources.map((s, i) => (
-            <div 
-              key={i} 
-              title={s.preview}
-              className="group/pill flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/30 px-2.5 py-1 text-[11px] text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-200 cursor-help"
-            >
+            <div key={i} title={s.preview} className="flex items-center gap-1.5 rounded-lg border border-zinc-800 bg-zinc-900/30 px-2.5 py-1 text-[11px] text-zinc-400 hover:bg-zinc-800 cursor-help">
               <span className="font-mono text-indigo-400">[{i + 1}]</span>
               <span className="max-w-[120px] truncate">{s.source}</span>
             </div>
@@ -93,16 +71,17 @@ const ChatMessage = ({ type, text, sources = [], timing, error }) => {
 };
 
 export default function App() {
-  const [view, setView] = useState('chat'); // 'chat', 'register', 'login', 'verify', 'debug'
+  const [view, setView] = useState('chat');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamError, setStreamError] = useState(null);
   const [backend, setBackend] = useState({ status: "checking", detail: "" });
   const [currentUser, setCurrentUser] = useState(null);
+  const [authToken, setAuthToken] = useState(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  
-  // Registration States
+
+  // Registration
   const [showPassword, setShowPassword] = useState(false);
   const [role, setRole] = useState('user');
   const [regForm, setRegForm] = useState({ username: '', email: '', password: '', confirmPassword: '', age: '', phone: '' });
@@ -110,12 +89,12 @@ export default function App() {
   const [regLoading, setRegLoading] = useState(false);
   const [suggestedPassword, setSuggestedPassword] = useState('');
 
-  // Login States
+  // Login
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
   const [loginError, setLoginError] = useState(null);
   const [loginLoading, setLoginLoading] = useState(false);
 
-  // Verification States
+  // Verification
   const [verifyEmail, setVerifyEmail] = useState('');
   const [pinDigits, setPinDigits] = useState(['', '', '', '', '', '']);
   const [verifyError, setVerifyError] = useState(null);
@@ -123,6 +102,13 @@ export default function App() {
   const [verifySuccess, setVerifySuccess] = useState(false);
   const [resendLoading, setResendLoading] = useState(false);
   const pinRefs = useRef([]);
+
+  // Profile & Tasks
+  const [tasks, setTasks] = useState([]);
+  const [tasksLoading, setTasksLoading] = useState(false);
+  const [usersList, setUsersList] = useState([]);
+  const [newTask, setNewTask] = useState({ title: '', description: '', assigned_to: '', due_date: '' });
+  const [taskError, setTaskError] = useState(null);
 
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
@@ -139,17 +125,11 @@ export default function App() {
     const checkStatus = async () => {
       try {
         const url = joinUrl(API_BASE, "/health");
-        const r = await fetch(url, { 
-          signal: ac.signal,
-          headers: { 'ngrok-skip-browser-warning': 'true' }
-        });
+        const r = await fetch(url, { signal: ac.signal, headers: { 'ngrok-skip-browser-warning': 'true' } });
         const j = await r.json().catch(() => null);
         if (!alive) return;
-        if (r.ok && j?.ok === true) {
-          setBackend({ status: "up", detail: "Model Ready" });
-        } else {
-          setBackend({ status: "down", detail: `HTTP ${r.status}` });
-        }
+        if (r.ok && j?.ok === true) setBackend({ status: "up", detail: "Model Ready" });
+        else setBackend({ status: "down", detail: `HTTP ${r.status}` });
       } catch (e) {
         if (alive) setBackend({ status: "down", detail: "Offline" });
       }
@@ -158,6 +138,101 @@ export default function App() {
     const t = setInterval(checkStatus, 10000);
     return () => { alive = false; clearInterval(t); ac.abort(); };
   }, []);
+
+  // Load chat history when user logs in
+  useEffect(() => {
+    if (authToken && currentUser) {
+      loadChatHistory();
+    }
+  }, [authToken]);
+
+  const loadChatHistory = async () => {
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/chat/history"), {
+        headers: authHeaders(authToken)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        if (data.messages && data.messages.length > 0) {
+          setMessages(data.messages.map(m => ({
+            type: m.type,
+            text: m.text,
+            sources: m.sources || [],
+            timing: m.timing
+          })));
+        }
+      }
+    } catch (e) {
+      console.error("Failed to load chat history:", e);
+    }
+  };
+
+  const saveChatMessage = async (role, text, sources = null, timing = null) => {
+    if (!authToken) return;
+    try {
+      await fetch(joinUrl(API_BASE, "/api/chat/history"), {
+        method: "POST",
+        headers: authHeaders(authToken),
+        body: JSON.stringify({ role, text, sources: sources ? JSON.stringify(sources) : null, timing })
+      });
+    } catch (e) {
+      console.error("Failed to save message:", e);
+    }
+  };
+
+  const handleClearHistory = async () => {
+    if (!authToken) return;
+    try {
+      await fetch(joinUrl(API_BASE, "/api/chat/history"), {
+        method: "DELETE",
+        headers: authHeaders(authToken)
+      });
+      setMessages([]);
+    } catch (e) {
+      console.error("Failed to clear history:", e);
+    }
+  };
+
+  // Load tasks
+  const loadTasks = async () => {
+    if (!authToken) return;
+    setTasksLoading(true);
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/tasks"), {
+        headers: authHeaders(authToken)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setTasks(data.tasks || []);
+      }
+    } catch (e) {
+      console.error("Failed to load tasks:", e);
+    } finally {
+      setTasksLoading(false);
+    }
+  };
+
+  const loadUsers = async () => {
+    if (!authToken || currentUser?.role !== 'provider') return;
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/users"), {
+        headers: authHeaders(authToken)
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setUsersList(data.users || []);
+      }
+    } catch (e) {
+      console.error("Failed to load users:", e);
+    }
+  };
+
+  useEffect(() => {
+    if (view === 'profile' && authToken) {
+      loadTasks();
+      if (currentUser?.role === 'provider') loadUsers();
+    }
+  }, [view, authToken]);
 
   const handleStop = () => {
     setIsLoading(false);
@@ -183,24 +258,19 @@ export default function App() {
           password: regForm.password,
           confirm_password: regForm.confirmPassword,
           age: parseInt(regForm.age),
+          role: role,
           phone: regForm.phone || null
         })
       });
 
       const data = await res.json();
-
       if (!res.ok) {
-        // FastAPI validation errors return detail as an array
         let errorMsg = "Registration failed";
-        if (typeof data.detail === 'string') {
-          errorMsg = data.detail;
-        } else if (Array.isArray(data.detail)) {
-          errorMsg = data.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
-        }
+        if (typeof data.detail === 'string') errorMsg = data.detail;
+        else if (Array.isArray(data.detail)) errorMsg = data.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
         throw new Error(errorMsg);
       }
 
-      // Move to verification view
       setVerifyEmail(regForm.email);
       setView('verify');
       setRegForm({ username: '', email: '', password: '', confirmPassword: '', age: '', phone: '' });
@@ -221,17 +291,12 @@ export default function App() {
       const res = await fetch(joinUrl(API_BASE, "/api/auth/login"), {
         method: "POST",
         headers: NGROK_HEADERS,
-        body: JSON.stringify({
-          email: loginForm.email,
-          password: loginForm.password
-        })
+        body: JSON.stringify({ email: loginForm.email, password: loginForm.password })
       });
 
       const data = await res.json();
-
       if (!res.ok) {
         if (res.status === 403) {
-          // Email not verified — go to verify view
           setVerifyEmail(loginForm.email);
           setView('verify');
           return;
@@ -239,6 +304,7 @@ export default function App() {
         throw new Error(typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ') : "Login failed");
       }
 
+      setAuthToken(data.access_token);
       setCurrentUser(data.user);
       setLoginForm({ email: '', password: '' });
       setView('chat');
@@ -253,197 +319,82 @@ export default function App() {
   const handlePinChange = (index, value) => {
     if (value.length > 1) value = value.slice(-1);
     if (value && !/^\d$/.test(value)) return;
-
     const newDigits = [...pinDigits];
     newDigits[index] = value;
     setPinDigits(newDigits);
-
-    // Auto-focus next input
-    if (value && index < 5) {
-      pinRefs.current[index + 1]?.focus();
-    }
+    if (value && index < 5) pinRefs.current[index + 1]?.focus();
   };
 
   const handlePinKeyDown = (index, e) => {
-    if (e.key === 'Backspace' && !pinDigits[index] && index > 0) {
-      pinRefs.current[index - 1]?.focus();
-    }
+    if (e.key === 'Backspace' && !pinDigits[index] && index > 0) pinRefs.current[index - 1]?.focus();
   };
 
   const handlePinPaste = (e) => {
     e.preventDefault();
     const pasted = e.clipboardData.getData('text').replace(/\D/g, '').slice(0, 6);
     if (pasted.length === 6) {
-      const newDigits = pasted.split('');
-      setPinDigits(newDigits);
+      setPinDigits(pasted.split(''));
       pinRefs.current[5]?.focus();
     }
   };
 
   const handleVerifyPin = async () => {
     const pin = pinDigits.join('');
-    if (pin.length !== 6) {
-      setVerifyError("Please enter all 6 digits");
-      return;
-    }
-
+    if (pin.length !== 6) { setVerifyError("Please enter all 6 digits"); return; }
     setVerifyError(null);
     setVerifyLoading(true);
-
     try {
       const res = await fetch(joinUrl(API_BASE, "/api/auth/verify-pin"), {
-        method: "POST",
-        headers: NGROK_HEADERS,
+        method: "POST", headers: NGROK_HEADERS,
         body: JSON.stringify({ email: verifyEmail, pin })
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.detail || "Verification failed");
-      }
-
+      if (!res.ok) throw new Error(data.detail || "Verification failed");
       setVerifySuccess(true);
-      setTimeout(() => {
-        setView('login');
-        setVerifySuccess(false);
-        setPinDigits(['', '', '', '', '', '']);
-      }, 2000);
+      setTimeout(() => { setView('login'); setVerifySuccess(false); setPinDigits(['', '', '', '', '', '']); }, 2000);
     } catch (err) {
       setVerifyError(err.message);
       setPinDigits(['', '', '', '', '', '']);
       pinRefs.current[0]?.focus();
-    } finally {
-      setVerifyLoading(false);
-    }
+    } finally { setVerifyLoading(false); }
   };
 
   const handleResendPin = async () => {
-    setResendLoading(true);
-    setVerifyError(null);
-
+    setResendLoading(true); setVerifyError(null);
     try {
       const res = await fetch(joinUrl(API_BASE, "/api/auth/resend-pin"), {
-        method: "POST",
-        headers: NGROK_HEADERS,
+        method: "POST", headers: NGROK_HEADERS,
         body: JSON.stringify({ email: verifyEmail })
       });
-
       const data = await res.json();
       if (!res.ok) throw new Error(data.detail || "Failed to resend");
-
-      setVerifyError(null);
       setPinDigits(['', '', '', '', '', '']);
       pinRefs.current[0]?.focus();
-    } catch (err) {
-      setVerifyError(err.message);
-    } finally {
-      setResendLoading(false);
-    }
+    } catch (err) { setVerifyError(err.message); }
+    finally { setResendLoading(false); }
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
+    setAuthToken(null);
+    setMessages([]);
+    setTasks([]);
     setView('login');
   };
 
-  // --- CHAT ---
-  const handleSendMessage = async (e) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
-
-    const userQuery = input.trim();
-    setInput("");
-    setIsLoading(true);
-    setStreamError(null);
-
-    setMessages(prev => [...prev, { type: "user", text: userQuery }]);
-    
-    let chatbotMsg = { type: 'chatbot', text: '', sources: [], timing: null, error: null };
-    setMessages(prev => [...prev, chatbotMsg]);
-
-    const ac = new AbortController();
-    streamAbortRef.current = ac;
-
-    const apiUrl = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(userQuery)}`;
-
-    try {
-      const response = await fetch(apiUrl, { 
-        signal: ac.signal,
-        headers: { 'ngrok-skip-browser-warning': 'true' }
-      });
-      if (!response.ok) throw new Error(`Server Error: ${response.status}`);
-      if (!response.body) throw new Error("Readable stream not supported");
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let buffer = "";
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          if (!line.startsWith("data:")) continue;
-          
-          try {
-            const data = JSON.parse(line.replace(/^data:\s*/, "").trim());
-            
-            if (data.type === "token") chatbotMsg.text += (data.text ?? "");
-            else if (data.type === "sources") chatbotMsg.sources = data.items ?? [];
-            else if (data.type === "perf_time") chatbotMsg.timing = data.data;
-            else if (data.type === "error") chatbotMsg.error = data.message;
-            else if (data.type === "done") break;
-
-            setMessages(prev => {
-              const next = [...prev];
-              next[next.length - 1] = { ...chatbotMsg };
-              return next;
-            });
-          } catch (e) {
-            console.error("SSE Parse error", e);
-          }
-        }
-      }
-    } catch (error) {
-      if (error?.name !== "AbortError") {
-        const msg = error?.message || String(error);
-        setStreamError(msg);
-        setMessages(prev => {
-          const next = [...prev];
-          next[next.length - 1].error = msg;
-          return next;
-        });
-      }
-    } finally {
-      setIsLoading(false);
-      streamAbortRef.current = null;
-    }
-  };
-
-  // --- Password Generator ---
+  // --- PASSWORD GENERATOR ---
   const generateStrongPassword = () => {
     const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
     const lower = 'abcdefghjkmnpqrstuvwxyz';
     const numbers = '23456789';
     const symbols = '!@#$%&*?+=-';
     const all = upper + lower + numbers + symbols;
-    
     let pass = '';
     pass += upper[Math.floor(Math.random() * upper.length)];
     pass += lower[Math.floor(Math.random() * lower.length)];
     pass += numbers[Math.floor(Math.random() * numbers.length)];
     pass += symbols[Math.floor(Math.random() * symbols.length)];
-    
-    for (let i = 4; i < 14; i++) {
-      pass += all[Math.floor(Math.random() * all.length)];
-    }
-    
-    // Shuffle
+    for (let i = 4; i < 14; i++) pass += all[Math.floor(Math.random() * all.length)];
     pass = pass.split('').sort(() => Math.random() - 0.5).join('');
     setSuggestedPassword(pass);
   };
@@ -457,8 +408,6 @@ export default function App() {
 
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return;
-
-    // Load Google Identity Services script
     const script = document.createElement('script');
     script.src = 'https://accounts.google.com/gsi/client';
     script.async = true;
@@ -470,31 +419,21 @@ export default function App() {
       });
     };
     document.head.appendChild(script);
-
-    return () => {
-      document.head.removeChild(script);
-    };
+    return () => { document.head.removeChild(script); };
   }, []);
 
   const handleGoogleResponse = async (response) => {
     try {
       const res = await fetch(joinUrl(API_BASE, "/api/auth/google"), {
-        method: "POST",
-        headers: NGROK_HEADERS,
+        method: "POST", headers: NGROK_HEADERS,
         body: JSON.stringify({ token: response.credential })
       });
-
       const data = await res.json();
-
-      if (!res.ok) {
-        const errorMsg = typeof data.detail === 'string' ? data.detail : "Google sign-in failed";
-        throw new Error(errorMsg);
-      }
-
+      if (!res.ok) throw new Error(typeof data.detail === 'string' ? data.detail : "Google sign-in failed");
+      setAuthToken(data.access_token);
       setCurrentUser(data.user);
       setView('chat');
     } catch (err) {
-      // Show error on whichever view is active
       if (view === 'register') setRegError(err.message);
       else if (view === 'login') setLoginError(err.message);
       else alert(err.message);
@@ -502,26 +441,124 @@ export default function App() {
   };
 
   const handleGoogleSignIn = () => {
-    if (!GOOGLE_CLIENT_ID || !window.google) {
-      alert("Google Sign-In is not configured yet.");
-      return;
-    }
+    if (!GOOGLE_CLIENT_ID || !window.google) { alert("Google Sign-In is not configured yet."); return; }
     window.google.accounts.id.prompt((notification) => {
       if (notification.isNotDisplayed() || notification.isSkippedMoment()) {
-        // Fallback: use renderButton approach
         const btn = document.getElementById('google-signin-fallback');
         if (btn) {
           btn.innerHTML = '';
-          window.google.accounts.id.renderButton(btn, {
-            theme: 'filled_black',
-            size: 'large',
-            width: '100%',
-            text: view === 'register' ? 'signup_with' : 'signin_with',
-          });
+          window.google.accounts.id.renderButton(btn, { theme: 'filled_black', size: 'large', width: '100%', text: view === 'register' ? 'signup_with' : 'signin_with' });
         }
       }
     });
   };
+
+  // --- TASK MANAGEMENT ---
+  const handleCreateTask = async (e) => {
+    e.preventDefault();
+    setTaskError(null);
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/tasks"), {
+        method: "POST",
+        headers: authHeaders(authToken),
+        body: JSON.stringify({
+          title: newTask.title,
+          description: newTask.description,
+          assigned_to: parseInt(newTask.assigned_to),
+          due_date: newTask.due_date || null
+        })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to create task");
+      setNewTask({ title: '', description: '', assigned_to: '', due_date: '' });
+      loadTasks();
+    } catch (err) {
+      setTaskError(err.message);
+    }
+  };
+
+  const handleToggleTask = async (taskId, currentStatus) => {
+    const newStatus = currentStatus === 'completed' ? 'pending' : 'completed';
+    try {
+      await fetch(joinUrl(API_BASE, `/api/tasks/${taskId}`), {
+        method: "PUT",
+        headers: authHeaders(authToken),
+        body: JSON.stringify({ status: newStatus })
+      });
+      loadTasks();
+    } catch (e) {
+      console.error("Failed to update task:", e);
+    }
+  };
+
+  // --- CHAT ---
+  const handleSendMessage = async (e) => {
+    e.preventDefault();
+    if (!input.trim() || isLoading) return;
+
+    const userQuery = input.trim();
+    setInput("");
+    setIsLoading(true);
+    setStreamError(null);
+
+    setMessages(prev => [...prev, { type: "user", text: userQuery }]);
+    saveChatMessage("user", userQuery);
+
+    let chatbotMsg = { type: 'chatbot', text: '', sources: [], timing: null, error: null };
+    setMessages(prev => [...prev, chatbotMsg]);
+
+    const ac = new AbortController();
+    streamAbortRef.current = ac;
+    const apiUrl = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(userQuery)}`;
+
+    try {
+      const response = await fetch(apiUrl, { signal: ac.signal, headers: { 'ngrok-skip-browser-warning': 'true' } });
+      if (!response.ok) throw new Error(`Server Error: ${response.status}`);
+      if (!response.body) throw new Error("Readable stream not supported");
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const data = JSON.parse(line.replace(/^data:\s*/, "").trim());
+            if (data.type === "token") chatbotMsg.text += (data.text ?? "");
+            else if (data.type === "sources") chatbotMsg.sources = data.items ?? [];
+            else if (data.type === "perf_time") chatbotMsg.timing = data.data;
+            else if (data.type === "error") chatbotMsg.error = data.message;
+            else if (data.type === "done") break;
+            setMessages(prev => { const next = [...prev]; next[next.length - 1] = { ...chatbotMsg }; return next; });
+          } catch (e) { console.error("SSE Parse error", e); }
+        }
+      }
+
+      // Save bot response to history
+      if (chatbotMsg.text) {
+        saveChatMessage("chatbot", chatbotMsg.text, chatbotMsg.sources, chatbotMsg.timing);
+      }
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        const msg = error?.message || String(error);
+        setStreamError(msg);
+        setMessages(prev => { const next = [...prev]; next[next.length - 1].error = msg; return next; });
+      }
+    } finally {
+      setIsLoading(false);
+      streamAbortRef.current = null;
+    }
+  };
+
+  // --- NAV HELPER ---
+  const navTo = (v) => { setView(v); setMobileMenuOpen(false); };
 
   return (
     <div className="flex h-screen w-full flex-col bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden">
@@ -536,118 +573,73 @@ export default function App() {
               <span className="text-sm font-bold tracking-tight leading-none">RAG Chatbot <span className="text-indigo-500">Pro</span></span>
               <div className="mt-1 flex items-center gap-2">
                 <div className={`h-1.5 w-1.5 rounded-full ${backend.status === 'up' ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)]' : 'bg-red-500'}`} />
-                <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">
-                  {backend.status === 'up' ? backend.detail : 'Offline'}
-                </span>
+                <span className="text-[9px] font-bold uppercase tracking-widest text-zinc-500">{backend.status === 'up' ? backend.detail : 'Offline'}</span>
               </div>
             </div>
           </div>
 
           {/* Desktop menu */}
           <div className="hidden md:flex items-center gap-2">
-            <button 
-              onClick={() => setView('chat')} 
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-                view === 'chat' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
+            <button onClick={() => navTo('chat')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'chat' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
               <MessageSquare size={14} /> Chat
             </button>
-
+            {currentUser && (
+              <button onClick={() => navTo('profile')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'profile' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
+                <UserCircle size={14} /> Profile
+              </button>
+            )}
             {!currentUser ? (
               <>
-                <button 
-                  onClick={() => setView('register')} 
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-                    view === 'register' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
+                <button onClick={() => navTo('register')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'register' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
                   <UserPlus size={14} /> Register
                 </button>
-                <button 
-                  onClick={() => setView('login')} 
-                  className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-                    view === 'login' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-                  }`}
-                >
+                <button onClick={() => navTo('login')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'login' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
                   <LogIn size={14} /> Sign In
                 </button>
               </>
             ) : (
-              <button 
-                onClick={handleLogout} 
-                className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent text-zinc-400 hover:text-zinc-200"
-              >
+              <button onClick={handleLogout} className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent text-zinc-400 hover:text-zinc-200">
                 <User size={14} /> {currentUser.username} (Sign Out)
               </button>
             )}
-
-            <button 
-              onClick={() => setView('debug')} 
-              className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${
-                view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'
-              }`}
-            >
+            <button onClick={() => navTo('debug')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
               <Terminal size={14} /> Debug
             </button>
           </div>
 
-          {/* Mobile hamburger button */}
-          <button 
-            onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-            className="md:hidden flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-all"
-          >
+          {/* Mobile hamburger */}
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-all">
             {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
 
-        {/* Mobile dropdown menu */}
+        {/* Mobile dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-zinc-900 bg-zinc-950/95 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="md:hidden border-t border-zinc-900 bg-zinc-950/95 backdrop-blur-xl">
             <div className="flex flex-col p-3 gap-1">
-              <button 
-                onClick={() => { setView('chat'); setMobileMenuOpen(false); }} 
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
-                  view === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
-                }`}
-              >
+              <button onClick={() => navTo('chat')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
                 <MessageSquare size={16} /> Chat
               </button>
-
+              {currentUser && (
+                <button onClick={() => navTo('profile')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'profile' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
+                  <UserCircle size={16} /> Profile
+                </button>
+              )}
               {!currentUser ? (
                 <>
-                  <button 
-                    onClick={() => { setView('register'); setMobileMenuOpen(false); }} 
-                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
-                      view === 'register' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
-                    }`}
-                  >
+                  <button onClick={() => navTo('register')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'register' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
                     <UserPlus size={16} /> Register
                   </button>
-                  <button 
-                    onClick={() => { setView('login'); setMobileMenuOpen(false); }} 
-                    className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
-                      view === 'login' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
-                    }`}
-                  >
+                  <button onClick={() => navTo('login')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'login' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
                     <LogIn size={16} /> Sign In
                   </button>
                 </>
               ) : (
-                <button 
-                  onClick={() => { handleLogout(); setMobileMenuOpen(false); }} 
-                  className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200 transition-all"
-                >
-                  <User size={16} /> {currentUser.username} (Sign Out)
+                <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider text-zinc-400 hover:bg-zinc-900">
+                  <User size={16} /> Sign Out
                 </button>
               )}
-
-              <button 
-                onClick={() => { setView('debug'); setMobileMenuOpen(false); }} 
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${
-                  view === 'debug' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-900 hover:text-zinc-200'
-                }`}
-              >
+              <button onClick={() => navTo('debug')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'debug' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-900'}`}>
                 <Terminal size={16} /> Debug
               </button>
             </div>
@@ -664,17 +656,25 @@ export default function App() {
             <div className="flex-1 overflow-y-auto px-4 py-8">
               <div className="mx-auto max-w-3xl">
                 {messages.length === 0 ? (
-                  <div className="flex flex-col items-center justify-center py-20 text-center animate-in fade-in zoom-in duration-500">
+                  <div className="flex flex-col items-center justify-center py-20 text-center">
                     <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900 ring-1 ring-zinc-800 shadow-inner">
                       <Bot className="w-12 h-12 text-zinc-800" />
                     </div>
                     <h2 className="text-2xl font-bold text-zinc-100">How can I help you today?</h2>
-                    <p className="mt-2 max-w-md text-zinc-500 text-sm">
-                      Ask anything about your documents or provide a prompt to start our session.
-                    </p>
+                    <p className="mt-2 max-w-md text-zinc-500 text-sm">Ask anything about your documents or provide a prompt to start.</p>
+                    {!currentUser && <p className="mt-4 text-xs text-zinc-600">Sign in to save your chat history.</p>}
                   </div>
                 ) : (
-                  messages.map((m, i) => <ChatMessage key={i} {...m} />)
+                  <>
+                    {currentUser && messages.length > 0 && (
+                      <div className="flex justify-end mb-4">
+                        <button onClick={handleClearHistory} className="flex items-center gap-1.5 text-[10px] text-zinc-600 hover:text-red-400 uppercase tracking-wider font-bold transition-colors">
+                          <Trash2 size={12} /> Clear History
+                        </button>
+                      </div>
+                    )}
+                    {messages.map((m, i) => <ChatMessage key={i} {...m} />)}
+                  </>
                 )}
                 <div ref={messagesEndRef} className="h-4" />
               </div>
@@ -683,43 +683,29 @@ export default function App() {
             <div className="bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent pt-10 pb-6 shrink-0">
               <div className="mx-auto max-w-3xl px-4">
                 <form onSubmit={handleSendMessage} className="relative flex items-center rounded-2xl border border-zinc-800 bg-zinc-900/50 p-1.5 shadow-2xl focus-within:border-indigo-500/50 transition-all ring-1 ring-white/5">
-                  <input
-                    type="text"
-                    value={input}
-                    onChange={(e) => setInput(e.target.value)}
-                    disabled={isLoading}
+                  <input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading}
                     placeholder={isLoading ? "Generating response..." : "Ask a question about your docs..."}
-                    className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600"
-                  />
+                    className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600" />
                   <div className="flex items-center gap-1">
                     {isLoading && (
-                      <button type="button" onClick={handleStop} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800 transition-colors">
-                        <StopCircle size={20} />
-                      </button>
+                      <button type="button" onClick={handleStop} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800"><StopCircle size={20} /></button>
                     )}
-                    <button 
-                      type="submit" 
-                      disabled={!input.trim() || isLoading} 
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${!input.trim() || isLoading ? 'bg-zinc-800 text-zinc-600' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500'}`}
-                    >
+                    <button type="submit" disabled={!input.trim() || isLoading}
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${!input.trim() || isLoading ? 'bg-zinc-800 text-zinc-600' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500'}`}>
                       <Send size={18} />
                     </button>
                   </div>
                 </form>
-                
                 {streamError && (
                   <div className="mt-3 flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2 text-[11px] text-red-400 ring-1 ring-red-500/20">
-                    <ShieldAlert size={12} />
-                    <span className="font-bold uppercase tracking-wider">Stream Error:</span>
-                    <span className="truncate">{streamError}</span>
+                    <ShieldAlert size={12} /> <span className="font-bold uppercase tracking-wider">Stream Error:</span> <span className="truncate">{streamError}</span>
                   </div>
                 )}
-
                 <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-3">
                   <p className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">&copy; 2026 RAG-BOT INC</p>
                   <div className="flex gap-4">
-                     <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><ShieldCheck size={10}/> SSL Encrypted</span>
-                     <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><Globe size={10}/> Cloud Context</span>
+                    <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><ShieldCheck size={10}/> SSL Encrypted</span>
+                    <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><Globe size={10}/> Cloud Context</span>
                   </div>
                 </div>
               </div>
@@ -727,10 +713,155 @@ export default function App() {
           </>
         )}
 
+        {/* ==================== PROFILE VIEW ==================== */}
+        {view === 'profile' && currentUser && (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="mx-auto max-w-3xl space-y-8">
+              {/* User Info Card */}
+              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                <div className="flex items-center gap-5">
+                  <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
+                    <UserCircle size={48} />
+                  </div>
+                  <div>
+                    <h2 className="text-2xl font-bold">{currentUser.username}</h2>
+                    <p className="text-sm text-zinc-500">{currentUser.email}</p>
+                    <span className={`mt-1 inline-block rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest ${
+                      currentUser.role === 'provider' ? 'bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20' : 'bg-indigo-500/10 text-indigo-400 ring-1 ring-indigo-500/20'
+                    }`}>
+                      {currentUser.role || 'user'}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Provider: Create Task Form */}
+              {currentUser.role === 'provider' && (
+                <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                  <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-6">
+                    <Plus size={16} /> Assign a Task
+                  </h3>
+                  <form onSubmit={handleCreateTask} className="space-y-4">
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Task Title</label>
+                      <input value={newTask.title} onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        placeholder="e.g. Complete daily journal entry" required />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Description</label>
+                      <textarea value={newTask.description} onChange={(e) => setNewTask({...newTask, description: e.target.value})}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700 resize-none h-20"
+                        placeholder="Optional task details..." />
+                    </div>
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Assign To</label>
+                        <select value={newTask.assigned_to} onChange={(e) => setNewTask({...newTask, assigned_to: e.target.value})}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" required>
+                          <option value="">Select user...</option>
+                          {usersList.map(u => (
+                            <option key={u.id} value={u.id}>{u.username} ({u.email})</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Due Date</label>
+                        <input type="date" value={newTask.due_date} onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                      </div>
+                    </div>
+                    {taskError && (
+                      <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
+                        <ShieldAlert size={14} /> <span>{taskError}</span>
+                      </div>
+                    )}
+                    <button type="submit"
+                      className="w-full rounded-xl bg-amber-600 py-3.5 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all flex items-center justify-center gap-2">
+                      <Plus size={16} /> Assign Task
+                    </button>
+                  </form>
+                </div>
+              )}
+
+              {/* Daily Tasks */}
+              <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
+                <div className="flex items-center justify-between mb-6">
+                  <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400">
+                    <ClipboardList size={16} /> {currentUser.role === 'provider' ? 'Assigned Tasks' : 'My Daily Tasks'}
+                  </h3>
+                  <button onClick={loadTasks} className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold flex items-center gap-1 transition-colors">
+                    <RefreshCw size={12} /> Refresh
+                  </button>
+                </div>
+
+                {tasksLoading ? (
+                  <div className="flex items-center justify-center py-12">
+                    <Loader2 size={24} className="animate-spin text-zinc-600" />
+                  </div>
+                ) : tasks.length === 0 ? (
+                  <div className="text-center py-12">
+                    <ClipboardList size={48} className="mx-auto text-zinc-800 mb-4" />
+                    <p className="text-zinc-500 text-sm">
+                      {currentUser.role === 'provider' ? "You haven't assigned any tasks yet." : "No tasks assigned to you yet."}
+                    </p>
+                    <p className="text-zinc-600 text-xs mt-1">
+                      {currentUser.role === 'provider' ? "Use the form above to assign tasks to users." : "Your provider will assign tasks here."}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="space-y-3">
+                    {tasks.map(task => (
+                      <div key={task.id}
+                        className={`flex items-start gap-4 rounded-2xl border p-5 transition-all ${
+                          task.status === 'completed'
+                            ? 'border-emerald-900/30 bg-emerald-500/5'
+                            : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
+                        }`}>
+                        {currentUser.role === 'user' && (
+                          <button onClick={() => handleToggleTask(task.id, task.status)}
+                            className={`mt-0.5 shrink-0 transition-colors ${task.status === 'completed' ? 'text-emerald-400' : 'text-zinc-600 hover:text-indigo-400'}`}>
+                            {task.status === 'completed' ? <CheckCircle2 size={22} /> : <Circle size={22} />}
+                          </button>
+                        )}
+                        <div className="flex-1 min-w-0">
+                          <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-zinc-500 line-through' : 'text-zinc-100'}`}>
+                            {task.title}
+                          </p>
+                          {task.description && (
+                            <p className="text-xs text-zinc-500 mt-1">{task.description}</p>
+                          )}
+                          <div className="flex items-center gap-3 mt-2">
+                            <span className="text-[10px] text-zinc-600 uppercase tracking-wider">
+                              {currentUser.role === 'provider' ? `→ ${task.assigned_to_name}` : `From: ${task.assigned_by_name}`}
+                            </span>
+                            {task.due_date && (
+                              <span className="flex items-center gap-1 text-[10px] text-zinc-600 uppercase tracking-wider">
+                                <Calendar size={10} /> {task.due_date}
+                              </span>
+                            )}
+                            <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                              task.status === 'completed'
+                                ? 'bg-emerald-500/10 text-emerald-400'
+                                : 'bg-amber-500/10 text-amber-400'
+                            }`}>
+                              {task.status}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* ==================== REGISTER VIEW ==================== */}
         {view === 'register' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-500 ring-1 ring-white/5 shadow-2xl">
+            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <UserPlus size={32} />
@@ -739,11 +870,8 @@ export default function App() {
                 <p className="mt-2 text-sm text-zinc-500">Sign up to get started with RAG Chatbot Pro.</p>
               </div>
 
-              {/* Google Sign-In */}
-              <button 
-                onClick={handleGoogleSignIn}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 py-3.5 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all"
-              >
+              <button onClick={handleGoogleSignIn}
+                className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 py-3.5 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all">
                 <svg width="18" height="18" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -761,144 +889,85 @@ export default function App() {
               </div>
 
               <form onSubmit={handleRegister} className="space-y-4">
-                {/* Username */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Username</label>
-                  <input 
-                    value={regForm.username}
-                    onChange={(e) => setRegForm({...regForm, username: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700" 
-                    placeholder="Choose a username"
-                    required
-                  />
+                  <input value={regForm.username} onChange={(e) => setRegForm({...regForm, username: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="Choose a username" required />
                 </div>
 
-                {/* Email */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
-                  <input 
-                    type="email"
-                    value={regForm.email}
-                    onChange={(e) => setRegForm({...regForm, email: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700" 
-                    placeholder="name@example.com"
-                    required
-                  />
+                  <input type="email" value={regForm.email} onChange={(e) => setRegForm({...regForm, email: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="name@example.com" required />
                 </div>
 
-                {/* Password */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1 flex justify-between items-center">
-                    Password
-                    <span className="text-[9px] text-indigo-400 normal-case italic">use symbols & numbers</span>
+                    Password <span className="text-[9px] text-indigo-400 normal-case italic">use symbols & numbers</span>
                   </label>
                   <div className="relative">
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      value={regForm.password}
+                    <input type={showPassword ? "text" : "password"} value={regForm.password}
                       onChange={(e) => setRegForm({...regForm, password: e.target.value})}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all" 
-                      placeholder="Min. 8 characters"
-                      required
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors"
-                    >
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all"
+                      placeholder="Min. 8 characters" required />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                   <div className="flex items-center gap-2 mt-1.5 ml-1">
-                    <button 
-                      type="button"
-                      onClick={generateStrongPassword}
-                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
-                    >
+                    <button type="button" onClick={generateStrongPassword} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
                       Generate strong password
                     </button>
                     {suggestedPassword && (
                       <div className="flex items-center gap-2">
                         <code className="text-[10px] text-emerald-500/80 font-mono bg-zinc-900 px-2 py-0.5 rounded">{suggestedPassword}</code>
-                        <button 
-                          type="button"
-                          onClick={useSuggestedPassword}
-                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors"
-                        >
-                          Use
-                        </button>
+                        <button type="button" onClick={useSuggestedPassword} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors">Use</button>
                       </div>
                     )}
                   </div>
                 </div>
 
-                {/* Confirm Password */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Confirm Password</label>
-                  <input 
-                    type="password"
-                    value={regForm.confirmPassword}
-                    onChange={(e) => setRegForm({...regForm, confirmPassword: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all" 
-                    placeholder="Repeat your password"
-                    required
-                  />
+                  <input type="password" value={regForm.confirmPassword} onChange={(e) => setRegForm({...regForm, confirmPassword: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all"
+                    placeholder="Repeat your password" required />
                 </div>
 
-                {/* Age */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Age</label>
-                  <input 
-                    type="number"
-                    value={regForm.age}
-                    onChange={(e) => setRegForm({...regForm, age: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700" 
-                    placeholder="Must be 13 or older"
-                    min="13"
-                    max="120"
-                    required
-                  />
+                  <input type="number" value={regForm.age} onChange={(e) => setRegForm({...regForm, age: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="Must be 13 or older" min="13" max="120" required />
                 </div>
 
-                {/* Phone (optional) */}
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">
                     Phone Number <span className="text-zinc-700">(optional)</span>
                   </label>
-                  <input 
-                    type="tel"
-                    value={regForm.phone}
-                    onChange={(e) => setRegForm({...regForm, phone: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700" 
-                    placeholder="+1234567890"
-                  />
+                  <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="+1234567890" />
                 </div>
 
-                {/* Account Role */}
                 <div className="space-y-2 pt-2 border-t border-zinc-800/50">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Account Role</label>
                   <div className="flex gap-6 px-1">
                     <label className="flex items-center gap-2.5 group cursor-pointer">
                       <div className="relative flex h-5 w-5 items-center justify-center">
-                        <input 
-                          type="checkbox" 
-                          className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
-                          checked={role === 'user'}
-                          onChange={() => setRole('user')}
-                        />
+                        <input type="checkbox" className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                          checked={role === 'user'} onChange={() => setRole('user')} />
                         <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
                       </div>
                       <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">User</span>
                     </label>
-
                     <label className="flex items-center gap-2.5 group cursor-pointer">
                       <div className="relative flex h-5 w-5 items-center justify-center">
-                        <input 
-                          type="checkbox" 
-                          className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
-                          checked={role === 'provider'}
-                          onChange={() => setRole('provider')}
-                        />
+                        <input type="checkbox" className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                          checked={role === 'provider'} onChange={() => setRole('provider')} />
                         <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
                       </div>
                       <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">Provider</span>
@@ -908,27 +977,20 @@ export default function App() {
 
                 {regError && (
                   <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
-                    <ShieldAlert size={14} />
-                    <span>{regError}</span>
+                    <ShieldAlert size={14} /> <span>{regError}</span>
                   </div>
                 )}
 
-                <button 
-                  type="submit"
-                  disabled={regLoading}
-                  className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
+                <button type="submit" disabled={regLoading}
+                  className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                   {regLoading ? <><Loader2 size={16} className="animate-spin" /> Creating Account...</> : 'Sign Up Now'}
                 </button>
               </form>
 
               <p className="text-center text-sm text-zinc-500">
                 Already have an account?{' '}
-                <button onClick={() => setView('login')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-                  Sign In
-                </button>
+                <button onClick={() => setView('login')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign In</button>
               </p>
-
               <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
                 By signing up, you agree to our <span className="text-zinc-400 underline cursor-pointer hover:text-zinc-200 transition-colors">Terms of Service</span>
               </p>
@@ -939,7 +1001,7 @@ export default function App() {
         {/* ==================== LOGIN VIEW ==================== */}
         {view === 'login' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-500 ring-1 ring-white/5 shadow-2xl">
+            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <LogIn size={32} />
@@ -948,11 +1010,8 @@ export default function App() {
                 <p className="mt-2 text-sm text-zinc-500">Sign in to your account to continue.</p>
               </div>
 
-              {/* Google Sign-In */}
-              <button 
-                onClick={handleGoogleSignIn}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 py-3.5 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all"
-              >
+              <button onClick={handleGoogleSignIn}
+                className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 py-3.5 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all">
                 <svg width="18" height="18" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -971,58 +1030,37 @@ export default function App() {
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
-                  <input 
-                    type="email"
-                    value={loginForm.email}
-                    onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700" 
-                    placeholder="name@example.com"
-                    required
-                  />
+                  <input type="email" value={loginForm.email} onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
+                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    placeholder="name@example.com" required />
                 </div>
-
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Password</label>
                   <div className="relative">
-                    <input 
-                      type={showPassword ? "text" : "password"} 
-                      value={loginForm.password}
+                    <input type={showPassword ? "text" : "password"} value={loginForm.password}
                       onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all" 
-                      placeholder="Enter your password"
-                      required
-                    />
-                    <button 
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors"
-                    >
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all"
+                      placeholder="Enter your password" required />
+                    <button type="button" onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
                   </div>
                 </div>
-
                 {loginError && (
                   <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
-                    <ShieldAlert size={14} />
-                    <span>{loginError}</span>
+                    <ShieldAlert size={14} /> <span>{loginError}</span>
                   </div>
                 )}
-
-                <button 
-                  type="submit"
-                  disabled={loginLoading}
-                  className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                >
+                <button type="submit" disabled={loginLoading}
+                  className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                   {loginLoading ? <><Loader2 size={16} className="animate-spin" /> Signing In...</> : 'Sign In'}
                 </button>
               </form>
 
               <p className="text-center text-sm text-zinc-500">
                 Don't have an account?{' '}
-                <button onClick={() => setView('register')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-                  Sign Up
-                </button>
+                <button onClick={() => setView('register')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign Up</button>
               </p>
             </div>
           </div>
@@ -1031,22 +1069,16 @@ export default function App() {
         {/* ==================== VERIFY PIN VIEW ==================== */}
         {view === 'verify' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl animate-in fade-in slide-in-from-top-4 duration-500 ring-1 ring-white/5 shadow-2xl">
-              <button 
-                onClick={() => setView('register')}
-                className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
+            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
+              <button onClick={() => setView('register')} className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
                 <ArrowLeft size={14} /> Back
               </button>
-
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <Mail size={32} />
                 </div>
                 <h2 className="text-3xl font-bold tracking-tight">Check Your Email</h2>
-                <p className="mt-2 text-sm text-zinc-500">
-                  We sent a 6-digit code to <span className="text-indigo-400 font-medium">{verifyEmail}</span>
-                </p>
+                <p className="mt-2 text-sm text-zinc-500">We sent a 6-digit code to <span className="text-indigo-400 font-medium">{verifyEmail}</span></p>
               </div>
 
               {verifySuccess ? (
@@ -1059,51 +1091,30 @@ export default function App() {
                 </div>
               ) : (
                 <>
-                  {/* PIN Input */}
                   <div className="flex justify-center gap-3">
                     {pinDigits.map((digit, i) => (
-                      <input
-                        key={i}
-                        ref={(el) => (pinRefs.current[i] = el)}
-                        type="text"
-                        inputMode="numeric"
-                        maxLength={1}
-                        value={digit}
-                        onChange={(e) => handlePinChange(i, e.target.value)}
-                        onKeyDown={(e) => handlePinKeyDown(i, e)}
+                      <input key={i} ref={(el) => (pinRefs.current[i] = el)} type="text" inputMode="numeric" maxLength={1}
+                        value={digit} onChange={(e) => handlePinChange(i, e.target.value)} onKeyDown={(e) => handlePinKeyDown(i, e)}
                         onPaste={i === 0 ? handlePinPaste : undefined}
                         className={`h-14 w-12 rounded-xl border text-center text-xl font-bold outline-none transition-all ${
-                          digit 
-                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' 
-                            : 'border-zinc-800 bg-zinc-950 text-zinc-100'
-                        } focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20`}
-                      />
+                          digit ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-zinc-800 bg-zinc-950 text-zinc-100'
+                        } focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20`} />
                     ))}
                   </div>
-
                   {verifyError && (
                     <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
-                      <ShieldAlert size={14} />
-                      <span>{verifyError}</span>
+                      <ShieldAlert size={14} /> <span>{verifyError}</span>
                     </div>
                   )}
-
-                  <button 
-                    onClick={handleVerifyPin}
-                    disabled={verifyLoading || pinDigits.join('').length !== 6}
-                    className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-                  >
+                  <button onClick={handleVerifyPin} disabled={verifyLoading || pinDigits.join('').length !== 6}
+                    className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
                     {verifyLoading ? <><Loader2 size={16} className="animate-spin" /> Verifying...</> : 'Verify Email'}
                   </button>
-
                   <div className="text-center">
                     <p className="text-sm text-zinc-500">
                       Didn't receive a code?{' '}
-                      <button 
-                        onClick={handleResendPin}
-                        disabled={resendLoading}
-                        className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors disabled:opacity-50 inline-flex items-center gap-1"
-                      >
+                      <button onClick={handleResendPin} disabled={resendLoading}
+                        className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors disabled:opacity-50 inline-flex items-center gap-1">
                         {resendLoading ? <><Loader2 size={12} className="animate-spin" /> Sending...</> : <><RefreshCw size={12} /> Resend Code</>}
                       </button>
                     </p>
@@ -1123,39 +1134,33 @@ export default function App() {
                   <Terminal size={16} /> Backend Diagnostics
                 </h3>
                 <div className="grid grid-cols-2 gap-4">
-                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
-                      <p className="text-[10px] text-zinc-500 uppercase mb-1">Health Status</p>
-                      <p className={`text-sm font-mono ${backend.status === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>{backend.status.toUpperCase()}</p>
-                   </div>
-                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
-                      <p className="text-[10px] text-zinc-500 uppercase mb-1">API Endpoint</p>
-                      <p className="text-sm font-mono text-zinc-300 truncate">{API_BASE}</p>
-                   </div>
-                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
-                      <p className="text-[10px] text-zinc-500 uppercase mb-1">Logged In As</p>
-                      <p className="text-sm font-mono text-zinc-300">{currentUser ? currentUser.username : 'Not signed in'}</p>
-                   </div>
-                   <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
-                      <p className="text-[10px] text-zinc-500 uppercase mb-1">Auth Status</p>
-                      <p className={`text-sm font-mono ${currentUser ? 'text-emerald-400' : 'text-amber-400'}`}>{currentUser ? 'AUTHENTICATED' : 'GUEST'}</p>
-                   </div>
+                  <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">Health Status</p>
+                    <p className={`text-sm font-mono ${backend.status === 'up' ? 'text-emerald-400' : 'text-red-400'}`}>{backend.status.toUpperCase()}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">API Endpoint</p>
+                    <p className="text-sm font-mono text-zinc-300 truncate">{API_BASE}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">Logged In As</p>
+                    <p className="text-sm font-mono text-zinc-300">{currentUser ? `${currentUser.username} (${currentUser.role})` : 'Not signed in'}</p>
+                  </div>
+                  <div className="p-4 rounded-xl bg-zinc-950 border border-zinc-800">
+                    <p className="text-[10px] text-zinc-500 uppercase mb-1">Auth Status</p>
+                    <p className={`text-sm font-mono ${currentUser ? 'text-emerald-400' : 'text-amber-400'}`}>{currentUser ? 'AUTHENTICATED' : 'GUEST'}</p>
+                  </div>
                 </div>
-                
                 <div className="mt-6">
                   <p className="text-[10px] text-zinc-500 uppercase mb-2">System Capabilities</p>
                   <div className="flex flex-wrap gap-2">
-                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">SSE STREAMING</span>
-                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">BITNET 1.58B</span>
-                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">CHROMA DB</span>
-                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">GMAIL SMTP</span>
-                    <span className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">JWT AUTH</span>
+                    {['SSE STREAMING', 'BITNET 1.58B', 'CHROMA DB', 'GMAIL SMTP', 'JWT AUTH', 'GOOGLE OAUTH', 'CHAT HISTORY', 'TASK MGMT'].map(cap => (
+                      <span key={cap} className="rounded-md bg-zinc-900 px-2 py-1 text-[10px] font-bold text-zinc-400 border border-zinc-800">{cap}</span>
+                    ))}
                   </div>
                 </div>
-
-                <button 
-                  onClick={() => window.location.reload()}
-                  className="mt-8 w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold uppercase tracking-widest transition-all text-zinc-300"
-                >
+                <button onClick={() => window.location.reload()}
+                  className="mt-8 w-full py-3 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold uppercase tracking-widest transition-all text-zinc-300">
                   Force Refresh Connection
                 </button>
               </div>

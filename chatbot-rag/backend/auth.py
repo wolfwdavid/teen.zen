@@ -13,6 +13,7 @@ import os
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 from dotenv import load_dotenv
+import requests as http_requests
 
 load_dotenv()
 
@@ -23,6 +24,7 @@ ACCESS_TOKEN_EXPIRE_MINUTES = 30
 
 GMAIL_ADDRESS = os.getenv("GMAIL_ADDRESS", "")
 GMAIL_APP_PASSWORD = os.getenv("GMAIL_APP_PASSWORD", "")
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 DB_PATH = Path(__file__).parent / "users.db"
@@ -260,3 +262,93 @@ def authenticate_user(email: str, password: str):
     conn.close()
 
     return user
+
+
+def verify_google_token(token: str):
+    """Verify Google OAuth token and return user info"""
+    try:
+        # Verify token with Google
+        resp = http_requests.get(
+            f"https://oauth2.googleapis.com/tokeninfo?id_token={token}"
+        )
+        
+        if resp.status_code != 200:
+            raise ValueError("Invalid Google token")
+        
+        payload = resp.json()
+        
+        # Verify the token is for our app
+        if payload.get('aud') != GOOGLE_CLIENT_ID:
+            raise ValueError("Token not intended for this app")
+        
+        # Check email is verified by Google
+        if payload.get('email_verified') != 'true' and payload.get('email_verified') is not True:
+            raise ValueError("Google email not verified")
+        
+        return {
+            "email": payload.get("email"),
+            "name": payload.get("name", ""),
+            "given_name": payload.get("given_name", ""),
+            "picture": payload.get("picture", ""),
+            "google_id": payload.get("sub")
+        }
+    except Exception as e:
+        raise ValueError(f"Google verification failed: {str(e)}")
+
+
+def get_or_create_google_user(google_info: dict):
+    """Get existing user or create new one from Google sign-in"""
+    email = google_info['email']
+    
+    # Check if user exists
+    user = get_user_by_email(email)
+    
+    if user:
+        # Update last login
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''
+            UPDATE users SET last_login = ? WHERE id = ?
+        ''', (datetime.utcnow(), user['id']))
+        conn.commit()
+        conn.close()
+        return user
+    
+    # Create new user from Google info
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Generate username from name or email
+    username = google_info.get('given_name', '').lower() or email.split('@')[0]
+    # Make username alphanumeric
+    username = ''.join(c for c in username if c.isalnum())
+    
+    # Ensure username is unique
+    base_username = username
+    counter = 1
+    while True:
+        cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+        if not cursor.fetchone():
+            break
+        username = f"{base_username}{counter}"
+        counter += 1
+    
+    # Create user with a random password (they'll sign in via Google)
+    random_password = secrets.token_urlsafe(32)
+    password_hash = hash_password(random_password)
+    
+    cursor.execute('''
+        INSERT INTO users (username, email, password_hash, email_verified)
+        VALUES (?, ?, ?, 1)
+    ''', (username, email, password_hash))
+    
+    conn.commit()
+    user_id = cursor.lastrowid
+    conn.close()
+    
+    return {
+        "id": user_id,
+        "username": username,
+        "email": email,
+        "email_verified": 1
+    }

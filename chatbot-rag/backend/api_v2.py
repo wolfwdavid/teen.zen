@@ -15,6 +15,8 @@ from auth import (
     verify_email_pin,
     resend_verification_pin,
     create_access_token,
+    verify_google_token,
+    get_or_create_google_user,
     ACCESS_TOKEN_EXPIRE_MINUTES,
     get_user_by_email
 )
@@ -109,7 +111,44 @@ class ResendPinRequest(BaseModel):
     email: EmailStr
 
 
+class GoogleAuthRequest(BaseModel):
+    token: str
+
+
 # --- AUTH ENDPOINTS ---
+@app.post("/api/auth/google")
+async def google_auth(request: GoogleAuthRequest):
+    """Authenticate with Google OAuth token"""
+    try:
+        # Verify the Google token
+        google_info = verify_google_token(request.token)
+        
+        # Get or create user
+        user = get_or_create_google_user(google_info)
+        
+        # Create JWT token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={"sub": user['email'], "user_id": user['id']},
+            expires_delta=access_token_expires
+        )
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user['id'],
+                "username": user['username'],
+                "email": user['email']
+            }
+        }
+    except ValueError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    except Exception as e:
+        logger.error(f"Google auth error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Google sign-in failed: {str(e)}")
+
+
 @app.post("/api/auth/register")
 async def register(request: RegisterRequest):
     """Register a new user and send verification PIN via email"""

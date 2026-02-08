@@ -974,7 +974,7 @@ export default function App() {
           </div>
         )}
 
-        {/* ==================== DEBUG VIEW ==================== */}
+        {/*:3 ==================== DEBUG VIEW ==================== */}
         {view === 'debug' && (
           <div className="flex-1 p-8 overflow-y-auto">
             <div className="mx-auto max-w-3xl space-y-6">
@@ -1026,3 +1026,4 @@ export default function App() {
     </div>
   );
 }
+

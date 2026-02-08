@@ -102,9 +102,11 @@ export default function App() {
   
   // Registration States
   const [showPassword, setShowPassword] = useState(false);
+  const [role, setRole] = useState('user');
   const [regForm, setRegForm] = useState({ username: '', email: '', password: '', confirmPassword: '', age: '', phone: '' });
   const [regError, setRegError] = useState(null);
   const [regLoading, setRegLoading] = useState(false);
+  const [suggestedPassword, setSuggestedPassword] = useState('');
 
   // Login States
   const [loginForm, setLoginForm] = useState({ email: '', password: '' });
@@ -414,6 +416,33 @@ export default function App() {
     }
   };
 
+  // --- Password Generator ---
+  const generateStrongPassword = () => {
+    const upper = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    const lower = 'abcdefghjkmnpqrstuvwxyz';
+    const numbers = '23456789';
+    const symbols = '!@#$%&*?+=-';
+    const all = upper + lower + numbers + symbols;
+    
+    let pass = '';
+    pass += upper[Math.floor(Math.random() * upper.length)];
+    pass += lower[Math.floor(Math.random() * lower.length)];
+    pass += numbers[Math.floor(Math.random() * numbers.length)];
+    pass += symbols[Math.floor(Math.random() * symbols.length)];
+    
+    for (let i = 4; i < 14; i++) {
+      pass += all[Math.floor(Math.random() * all.length)];
+    }
+    
+    // Shuffle
+    pass = pass.split('').sort(() => Math.random() - 0.5).join('');
+    setSuggestedPassword(pass);
+  };
+
+  const useSuggestedPassword = () => {
+    setRegForm({ ...regForm, password: suggestedPassword, confirmPassword: suggestedPassword });
+  };
+
   // --- Google Sign-In placeholder ---
   const handleGoogleSignIn = () => {
     alert("Google Sign-In will be available soon! Please use email registration for now.");
@@ -619,7 +648,10 @@ export default function App() {
 
                 {/* Password */}
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Password</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1 flex justify-between items-center">
+                    Password
+                    <span className="text-[9px] text-indigo-400 normal-case italic">use symbols & numbers</span>
+                  </label>
                   <div className="relative">
                     <input 
                       type={showPassword ? "text" : "password"} 
@@ -636,6 +668,27 @@ export default function App() {
                     >
                       {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                     </button>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 ml-1">
+                    <button 
+                      type="button"
+                      onClick={generateStrongPassword}
+                      className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
+                    >
+                      Generate strong password
+                    </button>
+                    {suggestedPassword && (
+                      <div className="flex items-center gap-2">
+                        <code className="text-[10px] text-emerald-500/80 font-mono bg-zinc-900 px-2 py-0.5 rounded">{suggestedPassword}</code>
+                        <button 
+                          type="button"
+                          onClick={useSuggestedPassword}
+                          className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors"
+                        >
+                          Use
+                        </button>
+                      </div>
+                    )}
                   </div>
                 </div>
 
@@ -681,6 +734,38 @@ export default function App() {
                   />
                 </div>
 
+                {/* Account Role */}
+                <div className="space-y-2 pt-2 border-t border-zinc-800/50">
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Account Role</label>
+                  <div className="flex gap-6 px-1">
+                    <label className="flex items-center gap-2.5 group cursor-pointer">
+                      <div className="relative flex h-5 w-5 items-center justify-center">
+                        <input 
+                          type="checkbox" 
+                          className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                          checked={role === 'user'}
+                          onChange={() => setRole('user')}
+                        />
+                        <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                      </div>
+                      <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">User</span>
+                    </label>
+
+                    <label className="flex items-center gap-2.5 group cursor-pointer">
+                      <div className="relative flex h-5 w-5 items-center justify-center">
+                        <input 
+                          type="checkbox" 
+                          className="peer h-full w-full cursor-pointer appearance-none rounded border border-zinc-700 bg-zinc-950 checked:bg-indigo-600 checked:border-indigo-500 transition-all"
+                          checked={role === 'provider'}
+                          onChange={() => setRole('provider')}
+                        />
+                        <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
+                      </div>
+                      <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">Provider</span>
+                    </label>
+                  </div>
+                </div>
+
                 {regError && (
                   <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
                     <ShieldAlert size={14} />
@@ -702,6 +787,10 @@ export default function App() {
                 <button onClick={() => setView('login')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
                   Sign In
                 </button>
+              </p>
+
+              <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
+                By signing up, you agree to our <span className="text-zinc-400 underline cursor-pointer hover:text-zinc-200 transition-colors">Terms of Service</span>
               </p>
             </div>
           </div>

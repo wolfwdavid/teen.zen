@@ -321,6 +321,24 @@ def verify_email_token(token: str):
     return rows_affected > 0
 
 
+# ========== QUARTER HELPERS ==========
+
+def get_quarter_dates(year: int, quarter: int):
+    """Return (start_date, end_date) for a given year/quarter"""
+    quarter_starts = {1: "01-01", 2: "04-01", 3: "07-01", 4: "10-01"}
+    quarter_ends = {1: "03-31", 2: "06-30", 3: "09-30", 4: "12-31"}
+    start = f"{year}-{quarter_starts[quarter]}"
+    end = f"{year}-{quarter_ends[quarter]}"
+    return start, end
+
+
+def get_current_quarter():
+    """Return (year, quarter_number) for today"""
+    now = datetime.utcnow()
+    q = (now.month - 1) // 3 + 1
+    return now.year, q
+
+
 # ========== CHAT HISTORY ==========
 
 def save_chat_message(user_id: int, role: str, text: str, sources: str = None, timing: float = None):
@@ -334,16 +352,22 @@ def save_chat_message(user_id: int, role: str, text: str, sources: str = None, t
     conn.close()
 
 
-def get_chat_history(user_id: int, limit: int = 100):
+def get_chat_history(user_id: int, year: int = None, quarter: int = None):
+    """Get chat history for a user, filtered by quarter. Default = current quarter."""
+    if year is None or quarter is None:
+        year, quarter = get_current_quarter()
+
+    start_date, end_date = get_quarter_dates(year, quarter)
+
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
         SELECT role, text, sources, timing, created_at
         FROM chat_messages
-        WHERE user_id = ?
+        WHERE user_id = ? AND hidden = 0
+          AND date(created_at) >= ? AND date(created_at) <= ?
         ORDER BY created_at ASC
-        LIMIT ?
-    ''', (user_id, limit))
+    ''', (user_id, start_date, end_date))
     rows = cursor.fetchall()
     conn.close()
 
@@ -367,12 +391,106 @@ def get_chat_history(user_id: int, limit: int = 100):
     return messages
 
 
-def clear_chat_history(user_id: int):
+def get_available_quarters(user_id: int):
+    """Return list of quarters that have chat data for a user"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM chat_messages WHERE user_id = ?', (user_id,))
+    cursor.execute('''
+        SELECT DISTINCT
+            strftime('%Y', created_at) as year,
+            CASE
+                WHEN cast(strftime('%m', created_at) as integer) <= 3 THEN 1
+                WHEN cast(strftime('%m', created_at) as integer) <= 6 THEN 2
+                WHEN cast(strftime('%m', created_at) as integer) <= 9 THEN 3
+                ELSE 4
+            END as quarter,
+            COUNT(*) as count
+        FROM chat_messages
+        WHERE user_id = ?
+        GROUP BY year, quarter
+        ORDER BY year DESC, quarter DESC
+    ''', (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [{"year": int(r['year']), "quarter": int(r['quarter']), "count": r['count']} for r in rows]
+
+
+def clear_chat_history(user_id: int):
+    """Soft-clear: hide messages from current quarter (not permanent delete)"""
+    year, quarter = get_current_quarter()
+    start_date, end_date = get_quarter_dates(year, quarter)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        UPDATE chat_messages SET hidden = 1
+        WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
+    ''', (user_id, start_date, end_date))
     conn.commit()
     conn.close()
+
+
+def get_chat_history_for_archive(user_id: int, year: int, quarter: int):
+    """Get ALL messages (including hidden) for archiving purposes"""
+    start_date, end_date = get_quarter_dates(year, quarter)
+
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT role, text, sources, timing, created_at
+        FROM chat_messages
+        WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
+        ORDER BY created_at ASC
+    ''', (user_id, start_date, end_date))
+    rows = cursor.fetchall()
+    conn.close()
+
+    return [dict(row) for row in rows]
+
+
+def create_archive_record(user_id: int, provider_id: int, quarter: int, year: int, message_count: int):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    quarter_label = f"Q{quarter}"
+    cursor.execute('''
+        INSERT INTO chat_archives (user_id, provider_id, quarter, year, message_count)
+        VALUES (?, ?, ?, ?, ?)
+    ''', (user_id, provider_id, quarter_label, year, message_count))
+    conn.commit()
+    archive_id = cursor.lastrowid
+    conn.close()
+    return archive_id
+
+
+def get_archives_for_provider(provider_id: int):
+    """Get all archives visible to a provider"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT ca.*, u.username as user_name, u.email as user_email
+        FROM chat_archives ca
+        JOIN users u ON ca.user_id = u.id
+        WHERE ca.provider_id = ?
+        ORDER BY ca.year DESC, ca.quarter DESC
+    ''', (provider_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    return [dict(row) for row in rows]
+
+
+def get_provider_for_user(user_id: int):
+    """Find the provider who has assigned tasks to this user"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT DISTINCT assigned_by FROM tasks WHERE assigned_to = ? LIMIT 1
+    ''', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return row['assigned_by']
+    return None
 
 
 # ========== TASKS ==========

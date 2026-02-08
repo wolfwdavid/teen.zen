@@ -190,7 +190,14 @@ export default function App() {
       const data = await res.json();
 
       if (!res.ok) {
-        throw new Error(data.detail || "Registration failed");
+        // FastAPI validation errors return detail as an array
+        let errorMsg = "Registration failed";
+        if (typeof data.detail === 'string') {
+          errorMsg = data.detail;
+        } else if (Array.isArray(data.detail)) {
+          errorMsg = data.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ');
+        }
+        throw new Error(errorMsg);
       }
 
       // Move to verification view
@@ -229,7 +236,7 @@ export default function App() {
           setView('verify');
           return;
         }
-        throw new Error(data.detail || "Login failed");
+        throw new Error(typeof data.detail === 'string' ? data.detail : Array.isArray(data.detail) ? data.detail.map(e => e.msg || e.message || JSON.stringify(e)).join(', ') : "Login failed");
       }
 
       setCurrentUser(data.user);

@@ -436,7 +436,7 @@ export default function App() {
         loadProviderPatients();
       }
     }
-  }, [view, authToken]);
+  }, [view, authToken, currentUser]);
 
   const handleStop = () => {
     setIsLoading(false);

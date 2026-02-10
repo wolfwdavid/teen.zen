@@ -4,7 +4,7 @@ import json
 import chain_v2
 from typing import Optional
 from datetime import timedelta, datetime
-from fastapi import FastAPI, HTTPException, Query, Header
+from fastapi import FastAPI, HTTPException, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, Response
 from pydantic import BaseModel, EmailStr, validator
@@ -28,6 +28,8 @@ from auth import (
     send_reset_pin, verify_reset_and_change_password,
     # Knowledge graph
     extract_knowledge_graph,
+    # Profile picture
+    save_profile_pic, get_profile_pic,
     ACCESS_TOKEN_EXPIRE_MINUTES, get_user_by_email,
     MAX_PATIENTS_PER_PROVIDER
 )
@@ -290,10 +292,29 @@ async def get_profile(authorization: str = Header(None)):
     result = {"id": user['id'], "username": user['username'], "email": user['email'],
               "role": user.get('role', 'user'), "age": user.get('age'), "phone": user.get('phone'),
               "created_at": user.get('created_at'), "last_login": user.get('last_login')}
+    pic = get_profile_pic(user['id'])
+    if pic: result['profile_pic'] = pic
     if user.get('role') == 'provider':
         result['patient_count'] = get_patient_count(user['id'])
         result['max_patients'] = MAX_PATIENTS_PER_PROVIDER
     return result
+
+@app.post("/api/profile/pic")
+async def upload_profile_pic(request: Request, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    body = await request.json()
+    pic_data = body.get('pic')
+    if not pic_data: raise HTTPException(status_code=400, detail="No pic data")
+    # Limit to ~2MB base64
+    if len(pic_data) > 3_000_000: raise HTTPException(status_code=400, detail="Image too large (max 2MB)")
+    save_profile_pic(user['id'], pic_data)
+    return {"success": True}
+
+@app.delete("/api/profile/pic")
+async def delete_profile_pic(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    save_profile_pic(user['id'], None)
+    return {"success": True}
 
 
 # --- CHAT HISTORY ---

@@ -330,9 +330,19 @@ export default function App() {
   // Profile picture & data
   useEffect(() => {
     if (currentUser) {
-      const savedPic = window.localStorage?.getItem(`profilePic_${currentUser.id}`);
-      if (savedPic) setProfilePic(savedPic);
-      else setProfilePic(null);
+      // Load profile pic from backend first, fallback to localStorage
+      (async () => {
+        try {
+          const res = await fetch(joinUrl(API_BASE, "/api/profile"), { headers: authHeaders(authToken) });
+          if (res.ok) {
+            const data = await res.json();
+            if (data.profile_pic) { setProfilePic(data.profile_pic); return; }
+          }
+        } catch {}
+        const savedPic = window.localStorage?.getItem(`profilePic_${currentUser.id}`);
+        if (savedPic) setProfilePic(savedPic);
+        else setProfilePic(null);
+      })();
 
       const savedData = window.localStorage?.getItem(`profileData_${currentUser.id}`);
       if (savedData) {
@@ -346,17 +356,29 @@ export default function App() {
     if (!file) return;
     if (file.size > 2 * 1024 * 1024) { alert("Image must be under 2MB"); return; }
     const reader = new FileReader();
-    reader.onload = (ev) => {
+    reader.onload = async (ev) => {
       const dataUrl = ev.target.result;
       setProfilePic(dataUrl);
       try { window.localStorage?.setItem(`profilePic_${currentUser.id}`, dataUrl); } catch {}
+      // Save to backend
+      try {
+        await fetch(joinUrl(API_BASE, "/api/profile/pic"), {
+          method: "POST", headers: authHeaders(authToken),
+          body: JSON.stringify({ pic: dataUrl })
+        });
+      } catch {}
     };
     reader.readAsDataURL(file);
   };
 
-  const removeProfilePic = () => {
+  const removeProfilePic = async () => {
     setProfilePic(null);
     try { window.localStorage?.removeItem(`profilePic_${currentUser.id}`); } catch {}
+    try {
+      await fetch(joinUrl(API_BASE, "/api/profile/pic"), {
+        method: "DELETE", headers: authHeaders(authToken)
+      });
+    } catch {}
   };
 
   const saveProfileData = () => {
@@ -761,8 +783,8 @@ export default function App() {
     if (!knowledgeGraph || !graphCanvasRef.current) return;
     const canvas = graphCanvasRef.current;
     const ctx = canvas.getContext('2d');
-    const W = canvas.width = canvas.parentElement?.offsetWidth || 500;
-    const H = canvas.height = 400;
+    const W = canvas.width = canvas.parentElement?.offsetWidth || 300;
+    const H = canvas.height = canvas.parentElement?.offsetHeight || 260;
 
     const nodes = knowledgeGraph.nodes.map((n, i) => ({
       ...n,
@@ -1302,12 +1324,16 @@ export default function App() {
                   onMouseEnter={() => setHoveredPatient(p.id)}
                   onMouseLeave={() => setHoveredPatient(null)}>
                   <button onClick={() => selectPatient(p)}
-                    className={`flex h-12 w-12 items-center justify-center text-sm font-bold transition-all ${
+                    className={`flex h-12 w-12 items-center justify-center text-sm font-bold transition-all overflow-hidden ${
                       selectedPatient?.id === p.id
-                        ? 'rounded-xl bg-indigo-600 text-white ring-2 ring-indigo-400/50'
-                        : 'rounded-2xl bg-zinc-900 text-zinc-400 hover:rounded-xl hover:bg-indigo-600/80 hover:text-white'
-                    }`}>
-                    {capitalize(p.username).charAt(0)}
+                        ? 'rounded-xl ring-2 ring-indigo-400/50'
+                        : 'rounded-2xl hover:rounded-xl'
+                    } ${p.profile_pic ? '' : selectedPatient?.id === p.id ? 'bg-indigo-600 text-white' : 'bg-zinc-900 text-zinc-400 hover:bg-indigo-600/80 hover:text-white'}`}>
+                    {p.profile_pic ? (
+                      <img src={p.profile_pic} alt="" className="h-full w-full object-cover" />
+                    ) : (
+                      capitalize(p.username).charAt(0)
+                    )}
                   </button>
                   {/* Active indicator */}
                   {selectedPatient?.id === p.id && (
@@ -1584,8 +1610,11 @@ export default function App() {
                   <div className="max-w-2xl space-y-6">
                     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
                       <div className="flex items-center gap-4 mb-4">
-                        <div className="h-16 w-16 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-2xl font-bold">
-                          {capitalize(selectedPatient.username).charAt(0)}
+                        <div className="h-16 w-16 rounded-2xl overflow-hidden bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-2xl font-bold">
+                          {selectedPatient.profile_pic
+                            ? <img src={selectedPatient.profile_pic} alt="" className="h-full w-full object-cover" />
+                            : capitalize(selectedPatient.username).charAt(0)
+                          }
                         </div>
                         <div>
                           <h3 className="text-lg font-bold text-zinc-100">{capitalize(selectedPatient.username)}</h3>
@@ -1807,109 +1836,128 @@ export default function App() {
                   </div>
 
                 ) : activeChannel === 'chat-history' ? (
-                  /* ===== CHAT HISTORY + KNOWLEDGE GRAPH ===== */
-                  <div className="h-full flex flex-col gap-4">
-                    {/* Knowledge Graph Panel */}
-                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden shrink-0">
-                      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800/50">
-                        <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-2">
-                          <Globe size={14} /> Topic Knowledge Graph
-                        </h4>
-                        <button onClick={() => loadKnowledgeGraph(selectedPatient.id)}
-                          className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold flex items-center gap-1 transition-colors">
-                          <RefreshCw size={10} /> Refresh
+                  /* ===== CHAT HISTORY + KNOWLEDGE GRAPH (side panel) ===== */
+                  <div className="h-full flex gap-0 -m-6">
+                    {/* LEFT: Chat Messages */}
+                    <div className="flex-1 flex flex-col min-w-0 border-r border-zinc-800/50">
+                      {/* Search bar */}
+                      <div className="flex items-center gap-3 px-5 py-3 border-b border-zinc-800/50 shrink-0">
+                        <div className="flex-1 flex items-center gap-2 bg-zinc-950 rounded-xl px-4 py-2 border border-zinc-800">
+                          <Search size={14} className="text-zinc-500 shrink-0" />
+                          <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)}
+                            onKeyDown={(e) => { if (e.key === 'Enter') loadPatientChatHistory(selectedPatient.id, chatSearch); }}
+                            className="bg-transparent text-sm text-zinc-200 outline-none w-full placeholder:text-zinc-600"
+                            placeholder="Search messages..." />
+                        </div>
+                        <button onClick={() => loadPatientChatHistory(selectedPatient.id, chatSearch)}
+                          className="rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 text-xs font-bold transition-colors flex items-center gap-1.5">
+                          <Search size={12} /> Search
+                        </button>
+                        <button onClick={() => { loadPatientChatHistory(selectedPatient.id); loadKnowledgeGraph(selectedPatient.id); setChatSearch(''); }}
+                          className="rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-2 text-xs font-bold transition-colors flex items-center gap-1.5">
+                          <RefreshCw size={12} /> Refresh
                         </button>
                       </div>
-                      {graphLoading ? (
-                        <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
-                      ) : !knowledgeGraph || knowledgeGraph.nodes.length === 0 ? (
-                        <div className="text-center py-10 px-4">
-                          <Globe size={36} className="mx-auto text-zinc-700 mb-3" />
-                          <p className="text-sm text-zinc-500">No graph data yet.</p>
-                          <p className="text-xs text-zinc-600 mt-1">Topics will appear as the patient chats with the bot.</p>
-                        </div>
-                      ) : (
-                        <div className="relative">
-                          <canvas ref={graphCanvasRef} className="w-full" style={{ height: '280px' }} />
-                          {/* Legend + Stats Row */}
-                          <div className="flex flex-wrap gap-x-6 gap-y-2 px-5 py-3 border-t border-zinc-800/50 bg-zinc-950/30">
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
-                              <span className="text-[10px] text-zinc-500">High risk</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
-                              <span className="text-[10px] text-zinc-500">Emotional</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                              <span className="text-[10px] text-zinc-500">Growth</span>
-                            </div>
-                            <div className="flex items-center gap-1.5">
-                              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
-                              <span className="text-[10px] text-zinc-500">General</span>
-                            </div>
-                            {knowledgeGraph.stats?.top_topics?.length > 0 && (
-                              <div className="ml-auto flex items-center gap-3">
-                                {knowledgeGraph.stats.top_topics.slice(0, 3).map(([topic, count]) => (
-                                  <span key={topic} className="text-[10px] text-zinc-400">
-                                    <span className="font-bold text-zinc-300">{topic}</span> ({count})
+
+                      {/* Messages */}
+                      <div className="flex-1 overflow-y-auto space-y-1 p-4 min-h-0">
+                        {chatHistoryLoading ? (
+                          <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
+                        ) : patientChatHistory.length === 0 ? (
+                          <div className="text-center py-12">
+                            <MessageSquare size={40} className="mx-auto text-zinc-700 mb-3" />
+                            <p className="text-sm text-zinc-500">No chat messages found.</p>
+                          </div>
+                        ) : (
+                          patientChatHistory.map((msg, i) => (
+                            <div key={i} className="flex gap-3 py-2 px-3 rounded-lg hover:bg-zinc-900/50">
+                              <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold overflow-hidden ${
+                                msg.type === 'user' ? (selectedPatient.profile_pic ? '' : 'bg-indigo-600/20 text-indigo-400') : 'bg-zinc-800 text-zinc-400'
+                              }`}>
+                                {msg.type === 'user' ? (
+                                  selectedPatient.profile_pic
+                                    ? <img src={selectedPatient.profile_pic} alt="" className="h-full w-full object-cover" />
+                                    : capitalize(selectedPatient.username).charAt(0)
+                                ) : <Bot size={14} />}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <span className={`text-xs font-bold ${msg.type === 'user' ? 'text-indigo-400' : 'text-zinc-400'}`}>
+                                    {msg.type === 'user' ? capitalize(selectedPatient.username) : 'Teen Zen Bot'}
                                   </span>
-                                ))}
+                                  <span className="text-[10px] text-zinc-600">
+                                    {msg.created_at ? new Date(msg.created_at).toLocaleString() : ''}
+                                  </span>
+                                </div>
+                                <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{msg.text}</p>
                               </div>
-                            )}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Search bar */}
-                    <div className="flex items-center gap-3 shrink-0">
-                      <div className="flex-1 flex items-center gap-2 bg-zinc-950 rounded-xl px-4 py-2.5 border border-zinc-800">
-                        <Search size={16} className="text-zinc-500 shrink-0" />
-                        <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)}
-                          onKeyDown={(e) => { if (e.key === 'Enter') loadPatientChatHistory(selectedPatient.id, chatSearch); }}
-                          className="bg-transparent text-sm text-zinc-200 outline-none w-full placeholder:text-zinc-600"
-                          placeholder="Search chat messages..." />
+                            </div>
+                          ))
+                        )}
                       </div>
-                      <button onClick={() => loadPatientChatHistory(selectedPatient.id, chatSearch)}
-                        className="rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 text-sm font-bold transition-colors flex items-center gap-2">
-                        <Search size={14} /> Search
-                      </button>
                     </div>
 
-                    {/* Messages */}
-                    <div className="flex-1 overflow-y-auto space-y-1 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 min-h-0">
-                      {chatHistoryLoading ? (
-                        <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
-                      ) : patientChatHistory.length === 0 ? (
-                        <div className="text-center py-12">
-                          <MessageSquare size={40} className="mx-auto text-zinc-700 mb-3" />
-                          <p className="text-sm text-zinc-500">
-                            {chatSearch ? 'No messages match your search.' : 'Click Search to load chat history.'}
-                          </p>
+                    {/* RIGHT: Knowledge Graph Panel */}
+                    <div className="w-[320px] shrink-0 flex flex-col bg-zinc-950/30 overflow-hidden">
+                      <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50 shrink-0">
+                        <h4 className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
+                          <Globe size={12} /> Knowledge Graph
+                        </h4>
+                        <button onClick={() => loadKnowledgeGraph(selectedPatient.id)}
+                          className="text-[10px] text-zinc-500 hover:text-zinc-300 flex items-center gap-1 transition-colors">
+                          <RefreshCw size={10} />
+                        </button>
+                      </div>
+
+                      {graphLoading ? (
+                        <div className="flex items-center justify-center py-16"><Loader2 size={20} className="animate-spin text-zinc-600" /></div>
+                      ) : !knowledgeGraph || knowledgeGraph.nodes.length === 0 ? (
+                        <div className="flex-1 flex flex-col items-center justify-center px-4 text-center">
+                          <Globe size={32} className="text-zinc-700 mb-3" />
+                          <p className="text-xs text-zinc-500">No graph data yet</p>
+                          <p className="text-[10px] text-zinc-600 mt-1">Topics appear as the patient chats</p>
                         </div>
                       ) : (
-                        patientChatHistory.map((msg, i) => (
-                          <div key={i} className="flex gap-3 py-2 px-3 rounded-lg hover:bg-zinc-900/50">
-                            <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${
-                              msg.type === 'user' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-zinc-800 text-zinc-400'
-                            }`}>
-                              {msg.type === 'user' ? capitalize(selectedPatient.username).charAt(0) : <Bot size={14} />}
-                            </div>
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className={`text-xs font-bold ${msg.type === 'user' ? 'text-indigo-400' : 'text-zinc-400'}`}>
-                                  {msg.type === 'user' ? capitalize(selectedPatient.username) : 'Teen Zen Bot'}
-                                </span>
-                                <span className="text-[10px] text-zinc-600">
-                                  {msg.created_at ? new Date(msg.created_at).toLocaleString() : ''}
-                                </span>
+                        <div className="flex flex-col flex-1 overflow-hidden">
+                          {/* Canvas */}
+                          <div className="relative flex-shrink-0" style={{ height: '260px' }}>
+                            <canvas ref={graphCanvasRef} className="w-full h-full" />
+                          </div>
+
+                          {/* Legend */}
+                          <div className="flex flex-wrap gap-x-4 gap-y-1 px-4 py-2 border-t border-zinc-800/50 shrink-0">
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[9px] text-zinc-500">Risk</span></div>
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /><span className="text-[9px] text-zinc-500">Emotional</span></div>
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-[9px] text-zinc-500">Growth</span></div>
+                            <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500" /><span className="text-[9px] text-zinc-500">General</span></div>
+                          </div>
+
+                          {/* Top Topics List */}
+                          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2 border-t border-zinc-800/50">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-2">Top Topics</p>
+                            {knowledgeGraph.stats?.top_topics?.map(([topic, count]) => (
+                              <div key={topic} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+                                <span className="text-xs text-zinc-300 capitalize">{topic}</span>
+                                <span className="text-[10px] font-mono text-indigo-400 font-bold">{count}</span>
                               </div>
-                              <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                            ))}
+                            {knowledgeGraph.stats?.strongest_connections?.length > 0 && (
+                              <>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mt-4 mb-2">Connections</p>
+                                {knowledgeGraph.stats.strongest_connections.slice(0, 4).map(([pair, count]) => (
+                                  <div key={pair} className="flex items-center justify-between py-1.5 px-3 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+                                    <span className="text-[10px] text-zinc-400">{pair}</span>
+                                    <span className="text-[10px] font-mono text-amber-400 font-bold">{count}</span>
+                                  </div>
+                                ))}
+                              </>
+                            )}
+                            <div className="pt-2">
+                              <p className="text-[10px] text-zinc-600">{knowledgeGraph.stats?.total_messages || 0} messages analyzed</p>
+                              <p className="text-[10px] text-zinc-600">{knowledgeGraph.stats?.topics_found || 0} topics found</p>
                             </div>
                           </div>
-                        ))
+                        </div>
                       )}
                     </div>
                   </div>

@@ -22,10 +22,18 @@ def init_db():
             email_verified BOOLEAN DEFAULT 0,
             verification_token TEXT,
             pin_expires_at TEXT,
+            profile_pic TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             last_login TIMESTAMP
         )
     ''')
+
+    # Migration: add profile_pic column if missing
+    try:
+        cursor.execute("SELECT profile_pic FROM users LIMIT 1")
+    except sqlite3.OperationalError:
+        cursor.execute("ALTER TABLE users ADD COLUMN profile_pic TEXT")
+        print("✅ Added profile_pic column to users table")
 
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS tasks (

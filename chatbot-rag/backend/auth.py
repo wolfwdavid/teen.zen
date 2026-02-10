@@ -467,7 +467,7 @@ def get_provider_patients(provider_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
     cursor.execute('''
-        SELECT u.id, u.username, u.email, u.age, u.created_at, u.last_login, pp.assigned_at
+        SELECT u.id, u.username, u.email, u.age, u.created_at, u.last_login, u.profile_pic, pp.assigned_at
         FROM provider_patients pp
         JOIN users u ON pp.user_id = u.id
         WHERE pp.provider_id = ?
@@ -723,6 +723,26 @@ THERAPY_TOPICS = {
     'communication': ['communication', 'express', 'boundaries', 'assertive', 'listen', 'conflict', 'argument', 'misunderstand'],
     'finances': ['money', 'financial', 'debt', 'bills', 'afford', 'rent', 'broke', 'income'],
 }
+
+
+# ========== PROFILE PICTURE (Backend Storage) ==========
+
+def save_profile_pic(user_id: int, pic_data: str):
+    """Save base64 profile picture to database"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('UPDATE users SET profile_pic = ? WHERE id = ?', (pic_data, user_id))
+    conn.commit()
+    conn.close()
+
+def get_profile_pic(user_id: int):
+    """Get profile picture for a user"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT profile_pic FROM users WHERE id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return row['profile_pic'] if row else None
 
 
 def extract_knowledge_graph(user_id: int):

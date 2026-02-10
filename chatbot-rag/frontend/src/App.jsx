@@ -164,6 +164,8 @@ export default function App() {
   const [knowledgeGraph, setKnowledgeGraph] = useState(null);
   const [graphLoading, setGraphLoading] = useState(false);
   const [showProviderProfile, setShowProviderProfile] = useState(false);
+  const [mobileView, setMobileView] = useState('sidebar'); // 'sidebar' | 'content'
+  const [showMobileGraph, setShowMobileGraph] = useState(false);
   const graphCanvasRef = useRef(null);
 
   // Forgot Password
@@ -718,6 +720,7 @@ export default function App() {
     setChatSearch('');
     setPatientChatHistory([]);
     setOpenSections(new Set(['presenting']));
+    setMobileView('content');
     // Load intake data
     try {
       const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patient.id}/intake`), { headers: authHeaders(authToken) });
@@ -1286,9 +1289,9 @@ export default function App() {
           <div className="flex-1 flex overflow-hidden">
 
             {/* === LEFT: Patient Sidebar (like Discord server icons) === */}
-            <div className="w-[72px] shrink-0 bg-zinc-950 flex flex-col items-center py-3 gap-2 overflow-y-auto border-r border-zinc-900">
+            <div className="hidden md:flex w-[72px] shrink-0 bg-zinc-950 flex-col items-center py-3 gap-2 overflow-y-auto border-r border-zinc-900">
               {/* Provider avatar */}
-              <div className="relative group mb-2 cursor-pointer" onClick={() => { setSelectedPatient(null); setShowProviderProfile(true); setActiveChannel('overview'); }}>
+              <div className="relative group mb-2 cursor-pointer" onClick={() => { setSelectedPatient(null); setShowProviderProfile(true); setActiveChannel('overview'); setMobileView('content'); }}>
                 {profilePic ? (
                   <img src={profilePic} alt="Me" className={`h-12 w-12 object-cover transition-all ${showProviderProfile && !selectedPatient ? 'rounded-xl ring-2 ring-white/50' : 'rounded-2xl ring-2 ring-indigo-500/40 hover:rounded-xl'}`} />
                 ) : (
@@ -1354,7 +1357,30 @@ export default function App() {
             </div>
 
             {/* === MIDDLE: Channels Sidebar === */}
-            <div className="w-[240px] shrink-0 bg-zinc-900/80 flex flex-col border-r border-zinc-800/50 overflow-hidden">
+            <div className={`${mobileView === 'sidebar' ? 'flex' : 'hidden'} md:flex w-full md:w-[240px] shrink-0 bg-zinc-900/80 flex-col border-r border-zinc-800/50 overflow-hidden`}>
+              {/* Mobile patient icons row */}
+              <div className="flex md:hidden items-center gap-2 px-3 py-2 border-b border-zinc-800/50 overflow-x-auto">
+                <div className="shrink-0 cursor-pointer" onClick={() => { setSelectedPatient(null); setShowProviderProfile(true); setActiveChannel('overview'); setMobileView('content'); }}>
+                  {profilePic ? (
+                    <img src={profilePic} alt="Me" className={`h-10 w-10 object-cover ${showProviderProfile && !selectedPatient ? 'rounded-xl ring-2 ring-white/50' : 'rounded-2xl ring-2 ring-indigo-500/40'}`} />
+                  ) : (
+                    <div className={`flex h-10 w-10 items-center justify-center text-white font-bold text-sm ${showProviderProfile && !selectedPatient ? 'rounded-xl bg-indigo-500 ring-2 ring-white/50' : 'rounded-2xl bg-indigo-600'}`}>
+                      {capitalize(currentUser.username).charAt(0)}
+                    </div>
+                  )}
+                </div>
+                <div className="w-[2px] h-6 bg-zinc-800 rounded-full shrink-0" />
+                {filteredPatients.map(p => (
+                  <button key={p.id} onClick={() => selectPatient(p)}
+                    className={`shrink-0 flex h-10 w-10 items-center justify-center text-sm font-bold transition-all overflow-hidden ${
+                      selectedPatient?.id === p.id ? 'rounded-xl ring-2 ring-indigo-400/50' : 'rounded-2xl'
+                    } ${p.profile_pic ? '' : selectedPatient?.id === p.id ? 'bg-indigo-600 text-white' : 'bg-zinc-800 text-zinc-400'}`}>
+                    {p.profile_pic ? (
+                      <img src={p.profile_pic} alt="" className="h-full w-full object-cover" />
+                    ) : capitalize(p.username).charAt(0)}
+                  </button>
+                ))}
+              </div>
               {/* Header */}
               <div className="px-4 h-12 flex items-center justify-between border-b border-zinc-800/50 shrink-0">
                 <h3 className="text-sm font-bold text-zinc-100 truncate">
@@ -1390,6 +1416,7 @@ export default function App() {
                         {providerChannels.filter(c => c.category === cat).map(ch => (
                           <button key={ch.id} onClick={() => {
                             setActiveChannel(ch.id);
+                            setMobileView('content');
                             if (ch.id === 'chat-history') { loadPatientChatHistory(selectedPatient.id); loadKnowledgeGraph(selectedPatient.id); }
                           }}
                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] transition-colors ${
@@ -1443,9 +1470,14 @@ export default function App() {
             </div>
 
             {/* === RIGHT: Content Area === */}
-            <div className="flex-1 flex flex-col bg-zinc-900/40 overflow-hidden">
+            <div className={`${mobileView === 'content' ? 'flex' : 'hidden'} md:flex flex-1 flex-col bg-zinc-900/40 overflow-hidden`}>
               {/* Content header bar */}
-              <div className="px-6 h-12 flex items-center gap-2 border-b border-zinc-800/50 shrink-0">
+              <div className="px-4 md:px-6 h-12 flex items-center gap-2 border-b border-zinc-800/50 shrink-0">
+                {/* Mobile back button */}
+                <button onClick={() => setMobileView('sidebar')}
+                  className="md:hidden shrink-0 text-zinc-400 hover:text-white transition-colors mr-1">
+                  <ArrowLeft size={18} />
+                </button>
                 {selectedPatient && activeChannel ? (
                   <>
                     {providerChannels.find(c => c.id === activeChannel)?.icon === 'lock'
@@ -1469,7 +1501,7 @@ export default function App() {
               </div>
 
               {/* Content body */}
-              <div className="flex-1 overflow-y-auto p-6">
+              <div className="flex-1 overflow-y-auto p-3 md:p-6">
                 {!selectedPatient && showProviderProfile ? (
                   /* ===== PROVIDER SELF PROFILE ===== */
                   <div className="max-w-2xl space-y-6">
@@ -1837,27 +1869,74 @@ export default function App() {
 
                 ) : activeChannel === 'chat-history' ? (
                   /* ===== CHAT HISTORY + KNOWLEDGE GRAPH (side panel) ===== */
-                  <div className="h-full flex gap-0 -m-6">
+                  <div className="h-full flex flex-col md:flex-row gap-0 -m-6">
                     {/* LEFT: Chat Messages */}
-                    <div className="flex-1 flex flex-col min-w-0 border-r border-zinc-800/50">
+                    <div className="flex-1 flex flex-col min-w-0 md:border-r border-zinc-800/50">
                       {/* Search bar */}
-                      <div className="flex items-center gap-3 px-5 py-3 border-b border-zinc-800/50 shrink-0">
-                        <div className="flex-1 flex items-center gap-2 bg-zinc-950 rounded-xl px-4 py-2 border border-zinc-800">
+                      <div className="flex items-center gap-2 md:gap-3 px-3 md:px-5 py-3 border-b border-zinc-800/50 shrink-0">
+                        <div className="flex-1 flex items-center gap-2 bg-zinc-950 rounded-xl px-3 md:px-4 py-2 border border-zinc-800">
                           <Search size={14} className="text-zinc-500 shrink-0" />
                           <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)}
                             onKeyDown={(e) => { if (e.key === 'Enter') loadPatientChatHistory(selectedPatient.id, chatSearch); }}
                             className="bg-transparent text-sm text-zinc-200 outline-none w-full placeholder:text-zinc-600"
                             placeholder="Search messages..." />
                         </div>
+                        {/* Mobile graph toggle */}
+                        <button onClick={() => setShowMobileGraph(!showMobileGraph)}
+                          className="md:hidden rounded-lg bg-indigo-600/20 text-indigo-400 px-2.5 py-2 text-xs font-bold transition-colors flex items-center gap-1.5 border border-indigo-500/30">
+                          <Globe size={12} />
+                        </button>
                         <button onClick={() => loadPatientChatHistory(selectedPatient.id, chatSearch)}
                           className="rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white px-3 py-2 text-xs font-bold transition-colors flex items-center gap-1.5">
-                          <Search size={12} /> Search
+                          <Search size={12} /> <span className="hidden sm:inline">Search</span>
                         </button>
                         <button onClick={() => { loadPatientChatHistory(selectedPatient.id); loadKnowledgeGraph(selectedPatient.id); setChatSearch(''); }}
                           className="rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 px-3 py-2 text-xs font-bold transition-colors flex items-center gap-1.5">
-                          <RefreshCw size={12} /> Refresh
+                          <RefreshCw size={12} /> <span className="hidden sm:inline">Refresh</span>
                         </button>
                       </div>
+
+                      {/* Mobile Knowledge Graph (collapsible) */}
+                      {showMobileGraph && (
+                        <div className="md:hidden border-b border-zinc-800/50 bg-zinc-950/30">
+                          <div className="flex items-center justify-between px-4 py-2">
+                            <h4 className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
+                              <Globe size={12} /> Knowledge Graph
+                            </h4>
+                            <button onClick={() => setShowMobileGraph(false)} className="text-zinc-500 hover:text-zinc-300">
+                              <X size={14} />
+                            </button>
+                          </div>
+                          {graphLoading ? (
+                            <div className="flex items-center justify-center py-8"><Loader2 size={20} className="animate-spin text-zinc-600" /></div>
+                          ) : !knowledgeGraph || knowledgeGraph.nodes.length === 0 ? (
+                            <div className="flex flex-col items-center justify-center px-4 py-6 text-center">
+                              <Globe size={28} className="text-zinc-700 mb-2" />
+                              <p className="text-xs text-zinc-500">No graph data yet</p>
+                            </div>
+                          ) : (
+                            <div className="px-4 pb-3 space-y-2">
+                              {/* Legend */}
+                              <div className="flex flex-wrap gap-x-4 gap-y-1">
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[9px] text-zinc-500">Risk</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-500" /><span className="text-[9px] text-zinc-500">Emotional</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-emerald-500" /><span className="text-[9px] text-zinc-500">Growth</span></div>
+                                <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-indigo-500" /><span className="text-[9px] text-zinc-500">General</span></div>
+                              </div>
+                              {/* Topics */}
+                              <div className="flex flex-wrap gap-2">
+                                {knowledgeGraph.stats?.top_topics?.map(([topic, count]) => (
+                                  <div key={topic} className="flex items-center gap-2 py-1 px-2.5 rounded-lg bg-zinc-900/50 border border-zinc-800/50">
+                                    <span className="text-xs text-zinc-300 capitalize">{topic}</span>
+                                    <span className="text-[10px] font-mono text-indigo-400 font-bold">{count}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              <p className="text-[10px] text-zinc-600">{knowledgeGraph.stats?.total_messages || 0} messages · {knowledgeGraph.stats?.topics_found || 0} topics</p>
+                            </div>
+                          )}
+                        </div>
+                      )}
 
                       {/* Messages */}
                       <div className="flex-1 overflow-y-auto space-y-1 p-4 min-h-0">
@@ -1897,8 +1976,8 @@ export default function App() {
                       </div>
                     </div>
 
-                    {/* RIGHT: Knowledge Graph Panel */}
-                    <div className="w-[320px] shrink-0 flex flex-col bg-zinc-950/30 overflow-hidden">
+                    {/* RIGHT: Knowledge Graph Panel (desktop only) */}
+                    <div className="hidden md:flex w-[320px] shrink-0 flex-col bg-zinc-950/30 overflow-hidden">
                       <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800/50 shrink-0">
                         <h4 className="text-[10px] font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-1.5">
                           <Globe size={12} /> Knowledge Graph

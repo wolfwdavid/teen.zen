@@ -607,3 +607,237 @@ def get_all_users_for_provider():
     rows = cursor.fetchall()
     conn.close()
     return [dict(row) for row in rows]
+
+
+# ========== FORGOT PASSWORD ==========
+
+def send_reset_pin(email: str) -> bool:
+    """Send a password reset PIN to the user's email"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT id, username, email_verified FROM users WHERE email = ?', (email,))
+    user = cursor.fetchone()
+    if not user:
+        conn.close()
+        raise ValueError("No account found with that email address")
+    if not user['email_verified']:
+        conn.close()
+        raise ValueError("Email not yet verified. Please verify your email first.")
+
+    pin = generate_pin()
+    pin_expires = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
+    cursor.execute('UPDATE users SET verification_token = ?, pin_expires_at = ? WHERE email = ?',
+                   (f"RESET:{pin}", pin_expires, email))
+    conn.commit()
+    conn.close()
+
+    # Send reset email
+    if not GMAIL_ADDRESS or not GMAIL_APP_PASSWORD:
+        print(f"⚠️ Gmail not configured. Reset PIN for {email}: {pin}")
+        return True
+    try:
+        msg = MIMEMultipart("alternative")
+        msg["Subject"] = f"🔑 Password Reset Code: {pin}"
+        msg["From"] = f"RAG Chatbot <{GMAIL_ADDRESS}>"
+        msg["To"] = email
+        html_body = f"""
+        <div style="font-family: -apple-system, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="margin: 0; font-size: 24px; color: #18181b;">Reset Your Password</h1>
+                <p style="margin: 8px 0 0; color: #71717a; font-size: 14px;">Hey {user['username']}, use this code to reset your password.</p>
+            </div>
+            <div style="background: #18181b; border-radius: 16px; padding: 32px; text-align: center;">
+                <p style="margin: 0 0 12px; color: #a1a1aa; font-size: 12px; text-transform: uppercase; letter-spacing: 2px;">Your reset code</p>
+                <div style="font-size: 36px; font-weight: bold; letter-spacing: 8px; color: #f59e0b; font-family: monospace;">{pin}</div>
+                <p style="margin: 16px 0 0; color: #52525b; font-size: 12px;">This code expires in 15 minutes</p>
+            </div>
+        </div>
+        """
+        msg.attach(MIMEText(html_body, "html"))
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(GMAIL_ADDRESS, GMAIL_APP_PASSWORD)
+            server.sendmail(GMAIL_ADDRESS, email, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"❌ Failed to send reset email: {e}")
+        return False
+
+
+def verify_reset_and_change_password(email: str, pin: str, new_password: str) -> bool:
+    """Verify reset PIN and change the password"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = ?', (email,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return False
+
+    stored_token = row['verification_token']
+    expires_at = row['pin_expires_at']
+
+    if not stored_token or not stored_token.startswith("RESET:"):
+        conn.close()
+        raise ValueError("No reset request found. Please request a new code.")
+    if expires_at and datetime.utcnow() > datetime.fromisoformat(expires_at):
+        conn.close()
+        raise ValueError("Reset code has expired. Please request a new one.")
+
+    stored_pin = stored_token.replace("RESET:", "")
+    if stored_pin != pin:
+        conn.close()
+        return False
+
+    # Reset password
+    new_hash = hash_password(new_password)
+    cursor.execute('UPDATE users SET password_hash = ?, verification_token = NULL, pin_expires_at = NULL WHERE email = ?',
+                   (new_hash, email))
+    conn.commit()
+    conn.close()
+    return True
+
+
+# ========== KNOWLEDGE GRAPH EXTRACTION ==========
+
+THERAPY_TOPICS = {
+    'anxiety': ['anxiety', 'anxious', 'worry', 'worried', 'nervous', 'panic', 'fear', 'scared', 'tense', 'overthinking', 'restless'],
+    'depression': ['depression', 'depressed', 'sad', 'hopeless', 'empty', 'numb', 'unmotivated', 'worthless', 'helpless', 'melancholy'],
+    'self-esteem': ['self-esteem', 'confidence', 'self-worth', 'insecure', 'inadequate', 'not good enough', 'imposter', 'self-doubt'],
+    'relationships': ['relationship', 'partner', 'boyfriend', 'girlfriend', 'spouse', 'dating', 'breakup', 'love', 'trust', 'intimacy', 'commitment'],
+    'family': ['family', 'parent', 'mother', 'father', 'mom', 'dad', 'sibling', 'brother', 'sister', 'child', 'children', 'son', 'daughter'],
+    'anger': ['anger', 'angry', 'frustrated', 'rage', 'irritated', 'resentment', 'furious', 'hostile', 'annoyed'],
+    'grief': ['grief', 'loss', 'mourning', 'death', 'bereavement', 'missing', 'passed away', 'gone'],
+    'trauma': ['trauma', 'ptsd', 'flashback', 'nightmares', 'abuse', 'assault', 'accident', 'violence', 'trigger'],
+    'stress': ['stress', 'stressed', 'overwhelmed', 'burnout', 'exhausted', 'pressure', 'overworked', 'tension'],
+    'sleep': ['sleep', 'insomnia', 'tired', 'fatigue', 'nightmares', 'restless', 'awake', 'sleeping'],
+    'work': ['work', 'job', 'career', 'boss', 'coworker', 'workplace', 'fired', 'promotion', 'office', 'employed', 'unemployed'],
+    'school': ['school', 'college', 'university', 'grades', 'exam', 'homework', 'teacher', 'student', 'class', 'study', 'academic'],
+    'loneliness': ['lonely', 'alone', 'isolated', 'no friends', 'disconnected', 'withdrawn', 'solitude'],
+    'substance use': ['alcohol', 'drinking', 'drugs', 'marijuana', 'cannabis', 'smoking', 'vaping', 'substance', 'addiction', 'sober'],
+    'self-harm': ['self-harm', 'cutting', 'hurting myself', 'self-injury'],
+    'eating': ['eating', 'food', 'appetite', 'weight', 'body image', 'anorexia', 'bulimia', 'binge'],
+    'social': ['social', 'friends', 'peer', 'bullying', 'fitting in', 'acceptance', 'rejection', 'popularity'],
+    'identity': ['identity', 'who am i', 'purpose', 'meaning', 'values', 'beliefs', 'sexuality', 'gender'],
+    'coping': ['coping', 'cope', 'manage', 'strategy', 'technique', 'breathing', 'meditation', 'mindfulness', 'journal'],
+    'growth': ['growth', 'progress', 'better', 'improve', 'goal', 'hope', 'change', 'healing', 'recovery', 'strength'],
+    'communication': ['communication', 'express', 'boundaries', 'assertive', 'listen', 'conflict', 'argument', 'misunderstand'],
+    'finances': ['money', 'financial', 'debt', 'bills', 'afford', 'rent', 'broke', 'income'],
+}
+
+
+def extract_knowledge_graph(user_id: int):
+    """Extract a knowledge graph from a patient's chat messages"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT text, role, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at ASC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        return {"nodes": [], "edges": [], "stats": {}}
+
+    # Count topic occurrences and co-occurrences
+    topic_counts = {}
+    topic_cooccurrence = {}
+    topic_timeline = {}
+    message_count = 0
+
+    for row in rows:
+        text = row['text'].lower()
+        role = row['role']
+        created_at = row['created_at'][:10] if row['created_at'] else ''
+
+        # Only analyze user messages for the graph (their own words)
+        if role != 'user':
+            continue
+
+        message_count += 1
+        found_topics = set()
+
+        for topic, keywords in THERAPY_TOPICS.items():
+            for kw in keywords:
+                if kw in text:
+                    found_topics.add(topic)
+                    break
+
+        for t in found_topics:
+            topic_counts[t] = topic_counts.get(t, 0) + 1
+            if t not in topic_timeline:
+                topic_timeline[t] = []
+            topic_timeline[t].append(created_at)
+
+        # Co-occurrences (topics mentioned in same message)
+        topics_list = sorted(found_topics)
+        for i in range(len(topics_list)):
+            for j in range(i + 1, len(topics_list)):
+                pair = (topics_list[i], topics_list[j])
+                topic_cooccurrence[pair] = topic_cooccurrence.get(pair, 0) + 1
+
+    # Build nodes
+    nodes = []
+    if topic_counts:
+        max_count = max(topic_counts.values())
+        # Add patient center node
+        nodes.append({
+            "id": "patient",
+            "label": "Patient",
+            "size": 30,
+            "color": "#818cf8",
+            "type": "center"
+        })
+
+        for topic, count in sorted(topic_counts.items(), key=lambda x: -x[1]):
+            size = 10 + (count / max_count) * 25
+            # Color by category
+            if topic in ('self-harm', 'trauma', 'substance use'):
+                color = "#ef4444"  # red
+            elif topic in ('anxiety', 'depression', 'anger', 'grief', 'stress'):
+                color = "#f59e0b"  # amber
+            elif topic in ('growth', 'coping', 'strengths'):
+                color = "#22c55e"  # green
+            else:
+                color = "#6366f1"  # indigo
+            nodes.append({
+                "id": topic,
+                "label": topic.replace('-', ' ').title(),
+                "size": size,
+                "color": color,
+                "count": count,
+                "type": "topic",
+                "first_seen": topic_timeline[topic][0] if topic_timeline.get(topic) else '',
+                "last_seen": topic_timeline[topic][-1] if topic_timeline.get(topic) else '',
+            })
+
+    # Build edges
+    edges = []
+    # Connect all topics to center
+    for topic in topic_counts:
+        edges.append({
+            "source": "patient",
+            "target": topic,
+            "weight": topic_counts[topic],
+            "type": "primary"
+        })
+
+    # Add co-occurrence edges
+    for (t1, t2), count in sorted(topic_cooccurrence.items(), key=lambda x: -x[1]):
+        if count >= 1:
+            edges.append({
+                "source": t1,
+                "target": t2,
+                "weight": count,
+                "type": "cooccurrence"
+            })
+
+    # Stats
+    stats = {
+        "total_messages": message_count,
+        "topics_found": len(topic_counts),
+        "top_topics": sorted(topic_counts.items(), key=lambda x: -x[1])[:5],
+        "strongest_connections": sorted(
+            [(f"{t1} ↔ {t2}", c) for (t1, t2), c in topic_cooccurrence.items()],
+            key=lambda x: -x[1]
+        )[:5]
+    }
+
+    return {"nodes": nodes, "edges": edges, "stats": stats}

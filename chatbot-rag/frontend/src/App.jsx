@@ -161,6 +161,19 @@ export default function App() {
   const [patientChatHistory, setPatientChatHistory] = useState([]);
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
   const [hoveredPatient, setHoveredPatient] = useState(null);
+  const [knowledgeGraph, setKnowledgeGraph] = useState(null);
+  const [graphLoading, setGraphLoading] = useState(false);
+  const [showProviderProfile, setShowProviderProfile] = useState(false);
+  const graphCanvasRef = useRef(null);
+
+  // Forgot Password
+  const [forgotEmail, setForgotEmail] = useState('');
+  const [forgotPin, setForgotPin] = useState('');
+  const [forgotNewPassword, setForgotNewPassword] = useState('');
+  const [forgotStep, setForgotStep] = useState(1); // 1=email, 2=pin+newpw
+  const [forgotError, setForgotError] = useState(null);
+  const [forgotLoading, setForgotLoading] = useState(false);
+  const [forgotSuccess, setForgotSuccess] = useState(false);
 
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
@@ -676,6 +689,7 @@ export default function App() {
 
   const selectPatient = async (patient) => {
     setSelectedPatient(patient);
+    setShowProviderProfile(false);
     setIntakeSaved(false);
     setObsSaved(false);
     setActiveChannel('overview');
@@ -731,6 +745,143 @@ export default function App() {
   const filteredPatients = providerPatients.filter(p =>
     !patientSearch || p.username.toLowerCase().includes(patientSearch.toLowerCase()) || p.email.toLowerCase().includes(patientSearch.toLowerCase())
   );
+
+  // Knowledge Graph
+  const loadKnowledgeGraph = async (patientId) => {
+    setGraphLoading(true);
+    try {
+      const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patientId}/knowledge-graph`), { headers: authHeaders(authToken) });
+      if (res.ok) { const d = await res.json(); setKnowledgeGraph(d); }
+    } catch (e) { setKnowledgeGraph(null); }
+    setGraphLoading(false);
+  };
+
+  // Draw force-directed graph on canvas
+  useEffect(() => {
+    if (!knowledgeGraph || !graphCanvasRef.current) return;
+    const canvas = graphCanvasRef.current;
+    const ctx = canvas.getContext('2d');
+    const W = canvas.width = canvas.parentElement?.offsetWidth || 500;
+    const H = canvas.height = 400;
+
+    const nodes = knowledgeGraph.nodes.map((n, i) => ({
+      ...n,
+      x: W / 2 + (Math.random() - 0.5) * 200,
+      y: H / 2 + (Math.random() - 0.5) * 200,
+      vx: 0, vy: 0
+    }));
+    const edges = knowledgeGraph.edges;
+    const nodeMap = {};
+    nodes.forEach(n => nodeMap[n.id] = n);
+
+    // Center node stays centered
+    if (nodeMap['patient']) { nodeMap['patient'].x = W / 2; nodeMap['patient'].y = H / 2; }
+
+    let frame;
+    const tick = () => {
+      // Simple force simulation
+      for (const n of nodes) {
+        if (n.id === 'patient') continue;
+        // Repulsion from other nodes
+        for (const m of nodes) {
+          if (n === m) continue;
+          const dx = n.x - m.x, dy = n.y - m.y;
+          const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+          const force = 800 / (dist * dist);
+          n.vx += (dx / dist) * force;
+          n.vy += (dy / dist) * force;
+        }
+        // Attraction to connected nodes
+        for (const e of edges) {
+          const src = nodeMap[e.source], tgt = nodeMap[e.target];
+          if (!src || !tgt) continue;
+          if (n === src || n === tgt) {
+            const other = n === src ? tgt : src;
+            const dx = other.x - n.x, dy = other.y - n.y;
+            const dist = Math.sqrt(dx * dx + dy * dy) || 1;
+            n.vx += dx * 0.01;
+            n.vy += dy * 0.01;
+          }
+        }
+        // Center gravity
+        n.vx += (W / 2 - n.x) * 0.002;
+        n.vy += (H / 2 - n.y) * 0.002;
+        // Damping
+        n.vx *= 0.85; n.vy *= 0.85;
+        n.x += n.vx; n.y += n.vy;
+        // Bounds
+        n.x = Math.max(30, Math.min(W - 30, n.x));
+        n.y = Math.max(30, Math.min(H - 30, n.y));
+      }
+
+      // Draw
+      ctx.clearRect(0, 0, W, H);
+      // Edges
+      for (const e of edges) {
+        const src = nodeMap[e.source], tgt = nodeMap[e.target];
+        if (!src || !tgt) continue;
+        ctx.beginPath();
+        ctx.moveTo(src.x, src.y);
+        ctx.lineTo(tgt.x, tgt.y);
+        ctx.strokeStyle = e.type === 'primary' ? 'rgba(99,102,241,0.3)' : 'rgba(161,161,170,0.15)';
+        ctx.lineWidth = Math.min(e.weight || 1, 4);
+        ctx.stroke();
+      }
+      // Nodes
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x, n.y, n.size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = n.color || '#6366f1';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Label
+        ctx.font = `${n.type === 'center' ? 'bold 11px' : '10px'} system-ui`;
+        ctx.fillStyle = '#e4e4e7';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label, n.x, n.y + n.size / 2 + 14);
+      }
+      frame = requestAnimationFrame(tick);
+    };
+    tick();
+    // Stop after 3 seconds
+    const timer = setTimeout(() => cancelAnimationFrame(frame), 3000);
+    return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
+  }, [knowledgeGraph]);
+
+  // Forgot Password
+  const handleForgotPassword = async () => {
+    setForgotError(null);
+    setForgotLoading(true);
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/auth/forgot-password"), {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ email: forgotEmail })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Failed to send reset code");
+      setForgotStep(2);
+    } catch (err) { setForgotError(err.message); }
+    setForgotLoading(false);
+  };
+
+  const handleResetPassword = async () => {
+    setForgotError(null);
+    setForgotLoading(true);
+    try {
+      const res = await fetch(joinUrl(API_BASE, "/api/auth/reset-password"), {
+        method: "POST",
+        headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+        body: JSON.stringify({ email: forgotEmail, pin: forgotPin, new_password: forgotNewPassword })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.detail || "Reset failed");
+      setForgotSuccess(true);
+    } catch (err) { setForgotError(err.message); }
+    setForgotLoading(false);
+  };
 
   const updateIntake = (field, value) => { setPatientIntake(prev => ({ ...prev, [field]: value })); setIntakeSaved(false); };
   const updateObs = (field, value) => { setTherapistObs(prev => ({ ...prev, [field]: value })); setObsSaved(false); };
@@ -1115,13 +1266,16 @@ export default function App() {
             {/* === LEFT: Patient Sidebar (like Discord server icons) === */}
             <div className="w-[72px] shrink-0 bg-zinc-950 flex flex-col items-center py-3 gap-2 overflow-y-auto border-r border-zinc-900">
               {/* Provider avatar */}
-              <div className="relative group mb-2">
+              <div className="relative group mb-2 cursor-pointer" onClick={() => { setSelectedPatient(null); setShowProviderProfile(true); setActiveChannel('overview'); }}>
                 {profilePic ? (
-                  <img src={profilePic} alt="Me" className="h-12 w-12 rounded-2xl object-cover ring-2 ring-indigo-500/40 hover:rounded-xl transition-all" />
+                  <img src={profilePic} alt="Me" className={`h-12 w-12 object-cover transition-all ${showProviderProfile && !selectedPatient ? 'rounded-xl ring-2 ring-white/50' : 'rounded-2xl ring-2 ring-indigo-500/40 hover:rounded-xl'}`} />
                 ) : (
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white font-bold text-lg hover:rounded-xl transition-all cursor-default">
+                  <div className={`flex h-12 w-12 items-center justify-center text-white font-bold text-lg transition-all ${showProviderProfile && !selectedPatient ? 'rounded-xl bg-indigo-500 ring-2 ring-white/50' : 'rounded-2xl bg-indigo-600 hover:rounded-xl'}`}>
                     {capitalize(currentUser.username).charAt(0)}
                   </div>
+                )}
+                {showProviderProfile && !selectedPatient && (
+                  <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[6px] w-1 h-8 bg-white rounded-r-full" />
                 )}
                 <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-900 text-white text-xs font-bold rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-zinc-800">
                   {capitalize(currentUser.username)}
@@ -1178,10 +1332,10 @@ export default function App() {
               {/* Header */}
               <div className="px-4 h-12 flex items-center justify-between border-b border-zinc-800/50 shrink-0">
                 <h3 className="text-sm font-bold text-zinc-100 truncate">
-                  {selectedPatient ? capitalize(selectedPatient.username) : 'Provider Dashboard'}
+                  {selectedPatient ? capitalize(selectedPatient.username) : showProviderProfile ? capitalize(currentUser.username) : 'Provider Dashboard'}
                 </h3>
-                {selectedPatient && (
-                  <button onClick={() => { setSelectedPatient(null); setActiveChannel('overview'); }}
+                {(selectedPatient || showProviderProfile) && (
+                  <button onClick={() => { setSelectedPatient(null); setShowProviderProfile(false); setActiveChannel('overview'); }}
                     className="text-zinc-500 hover:text-zinc-300 transition-colors">
                     <X size={14} />
                   </button>
@@ -1210,7 +1364,7 @@ export default function App() {
                         {providerChannels.filter(c => c.category === cat).map(ch => (
                           <button key={ch.id} onClick={() => {
                             setActiveChannel(ch.id);
-                            if (ch.id === 'chat-history') loadPatientChatHistory(selectedPatient.id);
+                            if (ch.id === 'chat-history') { loadPatientChatHistory(selectedPatient.id); loadKnowledgeGraph(selectedPatient.id); }
                           }}
                             className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] transition-colors ${
                               activeChannel === ch.id
@@ -1224,6 +1378,22 @@ export default function App() {
                       </div>
                     ))}
                   </>
+                ) : showProviderProfile ? (
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 px-2 mb-1">MY PROFILE</p>
+                    <button className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] bg-zinc-700/50 text-white font-medium">
+                      <Hash size={14} className="text-zinc-500 shrink-0" />
+                      <span className="truncate">profile-settings</span>
+                    </button>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 px-2 mb-1 mt-4">PATIENTS</p>
+                    {providerPatients.map(p => (
+                      <button key={p.id} onClick={() => selectPatient(p)}
+                        className="w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50 transition-colors">
+                        <UserCircle size={14} className="text-zinc-500 shrink-0" />
+                        <span className="truncate">{capitalize(p.username)}</span>
+                      </button>
+                    ))}
+                  </div>
                 ) : (
                   <div className="text-center py-8 px-4">
                     <UserCircle size={48} className="mx-auto text-zinc-700 mb-3" />
@@ -1261,6 +1431,12 @@ export default function App() {
                     </span>
                     <span className="text-xs text-zinc-500 ml-2">— {capitalize(selectedPatient.username)}</span>
                   </>
+                ) : showProviderProfile ? (
+                  <>
+                    <Hash size={16} className="text-zinc-500" />
+                    <span className="text-sm font-bold text-zinc-200">profile-settings</span>
+                    <span className="text-xs text-zinc-500 ml-2">— Your provider profile</span>
+                  </>
                 ) : (
                   <span className="text-sm text-zinc-500">Select a patient to get started</span>
                 )}
@@ -1268,7 +1444,133 @@ export default function App() {
 
               {/* Content body */}
               <div className="flex-1 overflow-y-auto p-6">
-                {!selectedPatient ? (
+                {!selectedPatient && showProviderProfile ? (
+                  /* ===== PROVIDER SELF PROFILE ===== */
+                  <div className="max-w-2xl space-y-6">
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+                      <div className="flex items-center gap-4 mb-6">
+                        <div className="relative group">
+                          {profilePic ? (
+                            <img src={profilePic} alt="Profile" className="h-20 w-20 rounded-2xl object-cover ring-2 ring-indigo-500/30" />
+                          ) : (
+                            <div className="flex h-20 w-20 items-center justify-center rounded-2xl bg-indigo-600 text-white text-3xl font-bold">
+                              {capitalize(currentUser.username).charAt(0)}
+                            </div>
+                          )}
+                          <button onClick={() => profilePicRef.current?.click()}
+                            className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
+                            <Camera size={22} className="text-white" />
+                          </button>
+                          <input ref={profilePicRef} type="file" accept="image/*" className="hidden" onChange={handleProfilePicChange} />
+                        </div>
+                        <div>
+                          <h3 className="text-xl font-bold text-zinc-100">{capitalize(currentUser.username)}</h3>
+                          <p className="text-sm text-zinc-500">{currentUser.email}</p>
+                          <span className="mt-1 inline-block rounded-full px-3 py-0.5 text-[10px] font-bold uppercase tracking-widest bg-amber-500/10 text-amber-400 ring-1 ring-amber-500/20">
+                            Provider
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Provider Details */}
+                      <div className="space-y-4">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                          <UserCircle size={14} /> Provider Information
+                        </h4>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
+                            <input value={profileData.fullName} onChange={(e) => updateProfile('fullName', e.target.value)}
+                              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                              placeholder="Legal full name" />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
+                            <input value={profileData.preferredName} onChange={(e) => updateProfile('preferredName', e.target.value)}
+                              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                              placeholder="What you'd like to be called" />
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Pronouns</label>
+                            <select value={profileData.pronouns} onChange={(e) => updateProfile('pronouns', e.target.value)}
+                              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                              <option value="">Select...</option><option value="he/him">He / Him</option><option value="she/her">She / Her</option><option value="they/them">They / Them</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Contact Phone</label>
+                            <input type="tel" value={profileData.contactPhone} onChange={(e) => updateProfile('contactPhone', e.target.value)}
+                              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                              placeholder="(555) 123-4567" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Consent & Logistics */}
+                      <div className="space-y-4 mt-6 pt-6 border-t border-zinc-800/50">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-amber-400 flex items-center gap-2">
+                          <ShieldCheck size={14} /> Consent & Logistics
+                        </h4>
+                        <div className="flex items-start gap-3 p-3 rounded-xl border border-zinc-800 bg-zinc-950/50">
+                          <button onClick={() => updateProfile('consentAcknowledged', !profileData.consentAcknowledged)}
+                            className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center border transition-all ${profileData.consentAcknowledged ? 'bg-indigo-600 border-indigo-500' : 'border-zinc-700'}`}>
+                            {profileData.consentAcknowledged && <Check size={14} className="text-white" />}
+                          </button>
+                          <div>
+                            <p className="text-sm text-zinc-200 font-medium">Informed Consent Acknowledged</p>
+                            <p className="text-[10px] text-zinc-500 mt-0.5">Client rights, therapy process, and confidentiality limits discussed.</p>
+                          </div>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Session Format</label>
+                            <select value={profileData.sessionFormat} onChange={(e) => updateProfile('sessionFormat', e.target.value)}
+                              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
+                              <option value="">Select...</option><option value="In-Person">In-Person</option><option value="Telehealth">Telehealth</option><option value="Hybrid">Hybrid</option>
+                            </select>
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Payment / Insurance</label>
+                            <input value={profileData.paymentInfo} onChange={(e) => updateProfile('paymentInfo', e.target.value)}
+                              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                              placeholder="Insurance info" />
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Patient Summary */}
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+                      <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-4 flex items-center gap-2">
+                        <ClipboardList size={14} /> Practice Overview
+                      </h4>
+                      <div className="grid grid-cols-3 gap-4">
+                        <div className="rounded-xl bg-zinc-950/50 p-4 border border-zinc-800 text-center">
+                          <p className="text-2xl font-bold text-indigo-400">{providerPatients.length}</p>
+                          <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Active Patients</p>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/50 p-4 border border-zinc-800 text-center">
+                          <p className="text-2xl font-bold text-amber-400">{15 - providerPatients.length}</p>
+                          <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Available Slots</p>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/50 p-4 border border-zinc-800 text-center">
+                          <p className="text-2xl font-bold text-emerald-400">{tasks.filter(t => t.status === 'completed').length}</p>
+                          <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Tasks Completed</p>
+                        </div>
+                      </div>
+                    </div>
+
+                    <button onClick={saveProfileData}
+                      className={`w-full rounded-2xl py-3.5 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
+                        profileSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-amber-600 shadow-amber-500/20 hover:bg-amber-500'
+                      }`}>
+                      {profileSaved ? <><Check size={16} /> Saved!</> : <><Save size={16} /> Save Provider Profile</>}
+                    </button>
+                  </div>
+
+                ) : !selectedPatient ? (
                   <div className="flex flex-col items-center justify-center h-full text-center">
                     <div className="h-20 w-20 rounded-3xl bg-zinc-800/50 flex items-center justify-center mb-4">
                       <Globe size={40} className="text-zinc-700" />
@@ -1505,10 +1807,64 @@ export default function App() {
                   </div>
 
                 ) : activeChannel === 'chat-history' ? (
-                  /* ===== CHAT HISTORY (read-only) ===== */
-                  <div className="max-w-3xl space-y-4 h-full flex flex-col">
+                  /* ===== CHAT HISTORY + KNOWLEDGE GRAPH ===== */
+                  <div className="h-full flex flex-col gap-4">
+                    {/* Knowledge Graph Panel */}
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 overflow-hidden shrink-0">
+                      <div className="flex items-center justify-between px-5 py-3 border-b border-zinc-800/50">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-400 flex items-center gap-2">
+                          <Globe size={14} /> Topic Knowledge Graph
+                        </h4>
+                        <button onClick={() => loadKnowledgeGraph(selectedPatient.id)}
+                          className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold flex items-center gap-1 transition-colors">
+                          <RefreshCw size={10} /> Refresh
+                        </button>
+                      </div>
+                      {graphLoading ? (
+                        <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
+                      ) : !knowledgeGraph || knowledgeGraph.nodes.length === 0 ? (
+                        <div className="text-center py-10 px-4">
+                          <Globe size={36} className="mx-auto text-zinc-700 mb-3" />
+                          <p className="text-sm text-zinc-500">No graph data yet.</p>
+                          <p className="text-xs text-zinc-600 mt-1">Topics will appear as the patient chats with the bot.</p>
+                        </div>
+                      ) : (
+                        <div className="relative">
+                          <canvas ref={graphCanvasRef} className="w-full" style={{ height: '280px' }} />
+                          {/* Legend + Stats Row */}
+                          <div className="flex flex-wrap gap-x-6 gap-y-2 px-5 py-3 border-t border-zinc-800/50 bg-zinc-950/30">
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-red-500" />
+                              <span className="text-[10px] text-zinc-500">High risk</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />
+                              <span className="text-[10px] text-zinc-500">Emotional</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
+                              <span className="text-[10px] text-zinc-500">Growth</span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              <span className="w-2.5 h-2.5 rounded-full bg-indigo-500" />
+                              <span className="text-[10px] text-zinc-500">General</span>
+                            </div>
+                            {knowledgeGraph.stats?.top_topics?.length > 0 && (
+                              <div className="ml-auto flex items-center gap-3">
+                                {knowledgeGraph.stats.top_topics.slice(0, 3).map(([topic, count]) => (
+                                  <span key={topic} className="text-[10px] text-zinc-400">
+                                    <span className="font-bold text-zinc-300">{topic}</span> ({count})
+                                  </span>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
                     {/* Search bar */}
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0">
                       <div className="flex-1 flex items-center gap-2 bg-zinc-950 rounded-xl px-4 py-2.5 border border-zinc-800">
                         <Search size={16} className="text-zinc-500 shrink-0" />
                         <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)}
@@ -1523,7 +1879,7 @@ export default function App() {
                     </div>
 
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto space-y-1 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+                    <div className="flex-1 overflow-y-auto space-y-1 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4 min-h-0">
                       {chatHistoryLoading ? (
                         <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
                       ) : patientChatHistory.length === 0 ? (
@@ -1535,7 +1891,7 @@ export default function App() {
                         </div>
                       ) : (
                         patientChatHistory.map((msg, i) => (
-                          <div key={i} className={`flex gap-3 py-2 px-3 rounded-lg hover:bg-zinc-900/50 ${msg.type === 'user' ? '' : ''}`}>
+                          <div key={i} className="flex gap-3 py-2 px-3 rounded-lg hover:bg-zinc-900/50">
                             <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${
                               msg.type === 'user' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-zinc-800 text-zinc-400'
                             }`}>
@@ -2288,6 +2644,102 @@ export default function App() {
                 Don't have an account?{' '}
                 <button onClick={() => setView('register')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign Up</button>
               </p>
+              <p className="text-center text-xs text-zinc-600">
+                <button onClick={() => { setView('forgot'); setForgotStep(1); setForgotError(null); setForgotSuccess(false); setForgotEmail(''); setForgotPin(''); setForgotNewPassword(''); }}
+                  className="text-amber-400/70 hover:text-amber-400 transition-colors">Forgot your password?</button>
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== FORGOT PASSWORD VIEW ==================== */}
+        {view === 'forgot' && (
+          <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
+            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
+              <button onClick={() => setView('login')} className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+                <ArrowLeft size={14} /> Back to Sign In
+              </button>
+
+              {forgotSuccess ? (
+                <div className="text-center space-y-4">
+                  <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-600/10 text-emerald-500 ring-1 ring-emerald-500/20">
+                    <Check size={32} />
+                  </div>
+                  <h2 className="text-2xl font-bold tracking-tight">Password Reset!</h2>
+                  <p className="text-sm text-zinc-500">Your password has been successfully changed.</p>
+                  <button onClick={() => setView('login')}
+                    className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all">
+                    Sign In Now
+                  </button>
+                </div>
+              ) : forgotStep === 1 ? (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-600/10 text-amber-500 ring-1 ring-amber-500/20">
+                      <Mail size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold tracking-tight">Forgot Password</h2>
+                    <p className="mt-2 text-sm text-zinc-500">Enter your email and we'll send you a reset code.</p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
+                    <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-amber-500/50 outline-none transition-all placeholder:text-zinc-700"
+                      placeholder="name@example.com" />
+                  </div>
+                  {forgotError && (
+                    <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
+                      <ShieldAlert size={14} /> <span>{forgotError}</span>
+                    </div>
+                  )}
+                  <button onClick={handleForgotPassword} disabled={forgotLoading || !forgotEmail}
+                    className="w-full rounded-xl bg-amber-600 py-4 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {forgotLoading ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Reset Code'}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-6">
+                  <div className="text-center">
+                    <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-600/10 text-amber-500 ring-1 ring-amber-500/20">
+                      <ShieldCheck size={32} />
+                    </div>
+                    <h2 className="text-2xl font-bold tracking-tight">Enter Reset Code</h2>
+                    <p className="mt-2 text-sm text-zinc-500">We sent a 6-digit code to <span className="text-indigo-400">{forgotEmail}</span></p>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">6-Digit Code</label>
+                    <input type="text" value={forgotPin} onChange={(e) => setForgotPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
+                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-center tracking-[0.5em] font-mono text-lg focus:border-amber-500/50 outline-none transition-all placeholder:text-zinc-700 placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
+                      placeholder="Enter code" maxLength={6} />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">New Password</label>
+                    <div className="relative">
+                      <input type={showPassword ? "text" : "password"} value={forgotNewPassword}
+                        onChange={(e) => setForgotNewPassword(e.target.value)}
+                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-amber-500/50 outline-none transition-all"
+                        placeholder="New password (min 8 chars)" />
+                      <button type="button" onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
+                        {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
+                      </button>
+                    </div>
+                  </div>
+                  {forgotError && (
+                    <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2.5 text-xs text-red-400 ring-1 ring-red-500/20">
+                      <ShieldAlert size={14} /> <span>{forgotError}</span>
+                    </div>
+                  )}
+                  <button onClick={handleResetPassword} disabled={forgotLoading || forgotPin.length !== 6 || forgotNewPassword.length < 8}
+                    className="w-full rounded-xl bg-amber-600 py-4 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                    {forgotLoading ? <><Loader2 size={16} className="animate-spin" /> Resetting...</> : 'Reset Password'}
+                  </button>
+                  <p className="text-center text-xs text-zinc-600">
+                    <button onClick={() => { setForgotStep(1); setForgotError(null); }}
+                      className="text-amber-400/70 hover:text-amber-400 transition-colors">Use a different email</button>
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         )}

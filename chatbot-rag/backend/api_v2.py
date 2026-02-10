@@ -24,6 +24,10 @@ from auth import (
     # Clinical data
     save_clinical_intake, get_clinical_intake,
     save_therapist_observations, get_therapist_observations,
+    # Forgot password
+    send_reset_pin, verify_reset_and_change_password,
+    # Knowledge graph
+    extract_knowledge_graph,
     ACCESS_TOKEN_EXPIRE_MINUTES, get_user_by_email,
     MAX_PATIENTS_PER_PROVIDER
 )
@@ -156,6 +160,22 @@ class ObservationsRequest(BaseModel):
 class AssignPatientRequest(BaseModel):
     user_id: int
 
+class ForgotPasswordRequest(BaseModel):
+    email: EmailStr
+
+class ResetPasswordRequest(BaseModel):
+    email: EmailStr
+    pin: str
+    new_password: str
+    @validator('pin')
+    def pin_valid(cls, v):
+        if len(v) != 6 or not v.isdigit(): raise ValueError('PIN must be exactly 6 digits')
+        return v
+    @validator('new_password')
+    def password_strong(cls, v):
+        if len(v) < 8: raise ValueError('Password must be at least 8 characters')
+        return v
+
 
 # --- AUTH ENDPOINTS ---
 @app.post("/api/auth/google")
@@ -233,6 +253,34 @@ async def verify_email(token: str):
     success = verify_email_token(token)
     if not success: raise HTTPException(status_code=400, detail="Invalid or expired token")
     return {"success": True, "message": "Email verified successfully!"}
+
+
+# --- FORGOT PASSWORD ---
+@app.post("/api/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest):
+    try:
+        success = send_reset_pin(request.email)
+        if not success: raise HTTPException(status_code=500, detail="Failed to send reset email")
+        return {"success": True, "message": "A password reset code has been sent to your email."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"Forgot password error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to process request")
+
+@app.post("/api/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest):
+    try:
+        success = verify_reset_and_change_password(request.email, request.pin, request.new_password)
+        if not success: raise HTTPException(status_code=400, detail="Invalid reset code")
+        return {"success": True, "message": "Password reset successfully! You can now sign in."}
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except HTTPException: raise
+    except Exception as e:
+        logger.error(f"Reset password error: {str(e)}")
+        raise HTTPException(status_code=500, detail="Password reset failed")
 
 
 # --- PROFILE ---
@@ -434,6 +482,15 @@ async def save_obs(user_id: int, request: ObservationsRequest, authorization: st
     require_provider(user)
     save_therapist_observations(user_id, user['id'], request.observations)
     return {"success": True, "message": "Observations saved"}
+
+
+# --- KNOWLEDGE GRAPH ---
+@app.get("/api/provider/patients/{user_id}/knowledge-graph")
+async def get_knowledge_graph(user_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    graph = extract_knowledge_graph(user_id)
+    return graph
 
 
 # --- TASKS ---

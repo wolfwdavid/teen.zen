@@ -4,7 +4,7 @@ import {
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
   ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save,
-  ChevronLeft, ChevronRight, Archive
+  ChevronLeft, ChevronRight, Archive, Search, Hash, Lock
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -147,7 +147,7 @@ export default function App() {
   });
   const [profileSaved, setProfileSaved] = useState(false);
 
-  // Provider Dashboard
+  // Provider Dashboard (Discord-style)
   const [providerPatients, setProviderPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientIntake, setPatientIntake] = useState({});
@@ -155,6 +155,12 @@ export default function App() {
   const [openSections, setOpenSections] = useState(new Set(['presenting']));
   const [intakeSaved, setIntakeSaved] = useState(false);
   const [obsSaved, setObsSaved] = useState(false);
+  const [activeChannel, setActiveChannel] = useState('overview');
+  const [patientSearch, setPatientSearch] = useState('');
+  const [chatSearch, setChatSearch] = useState('');
+  const [patientChatHistory, setPatientChatHistory] = useState([]);
+  const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
+  const [hoveredPatient, setHoveredPatient] = useState(null);
 
   const messagesEndRef = useRef(null);
   const streamAbortRef = useRef(null);
@@ -617,9 +623,11 @@ export default function App() {
   };
 
   // --- TASK MANAGEMENT ---
-  const handleCreateTask = async (e) => {
+  const handleCreateTask = async (e, overrideAssignTo) => {
     e.preventDefault();
     setTaskError(null);
+    const assignTo = overrideAssignTo || newTask.assigned_to;
+    if (!assignTo) { setTaskError("No user selected"); return; }
     try {
       const res = await fetch(joinUrl(API_BASE, "/api/tasks"), {
         method: "POST",
@@ -627,7 +635,7 @@ export default function App() {
         body: JSON.stringify({
           title: newTask.title,
           description: newTask.description,
-          assigned_to: parseInt(newTask.assigned_to),
+          assigned_to: parseInt(assignTo),
           due_date: newTask.due_date || null
         })
       });
@@ -670,6 +678,9 @@ export default function App() {
     setSelectedPatient(patient);
     setIntakeSaved(false);
     setObsSaved(false);
+    setActiveChannel('overview');
+    setChatSearch('');
+    setPatientChatHistory([]);
     setOpenSections(new Set(['presenting']));
     // Load intake data
     try {
@@ -682,6 +693,44 @@ export default function App() {
       if (res.ok) { const d = await res.json(); setTherapistObs(d.data || {}); }
     } catch (e) { setTherapistObs({}); }
   };
+
+  const loadPatientChatHistory = async (patientId, searchQuery = '') => {
+    setChatHistoryLoading(true);
+    try {
+      const res = await fetch(joinUrl(API_BASE, `/api/chat/history?user_id=${patientId}`), { headers: authHeaders(authToken) });
+      if (res.ok) {
+        const data = await res.json();
+        let msgs = data.messages || [];
+        if (searchQuery.trim()) {
+          const q = searchQuery.toLowerCase();
+          msgs = msgs.filter(m => m.text?.toLowerCase().includes(q));
+        }
+        setPatientChatHistory(msgs);
+      }
+    } catch (e) { setPatientChatHistory([]); }
+    setChatHistoryLoading(false);
+  };
+
+  // Channel definitions for Discord-style sidebar
+  const providerChannels = [
+    { id: 'overview', label: 'overview', icon: 'hash', category: 'PATIENT INFO' },
+    { id: 'presenting', label: 'presenting-concern', icon: 'hash', category: 'PATIENT INFO' },
+    { id: 'history', label: 'mental-health-history', icon: 'hash', category: 'PATIENT INFO' },
+    { id: 'risk', label: 'risk-safety', icon: 'hash', category: 'CLINICAL' },
+    { id: 'life', label: 'life-context', icon: 'hash', category: 'CLINICAL' },
+    { id: 'developmental', label: 'developmental-background', icon: 'hash', category: 'CLINICAL' },
+    { id: 'coping', label: 'coping-regulation', icon: 'hash', category: 'CLINICAL' },
+    { id: 'strengths', label: 'strengths-resources', icon: 'hash', category: 'CLINICAL' },
+    { id: 'goals', label: 'therapy-goals', icon: 'hash', category: 'CLINICAL' },
+    { id: 'observations', label: 'private-observations', icon: 'lock', category: 'THERAPIST ONLY' },
+    { id: 'modern', label: 'modern-addons', icon: 'lock', category: 'THERAPIST ONLY' },
+    { id: 'chat-history', label: 'chat-history', icon: 'hash', category: 'RECORDS' },
+    { id: 'tasks', label: 'assigned-tasks', icon: 'hash', category: 'RECORDS' },
+  ];
+
+  const filteredPatients = providerPatients.filter(p =>
+    !patientSearch || p.username.toLowerCase().includes(patientSearch.toLowerCase()) || p.email.toLowerCase().includes(patientSearch.toLowerCase())
+  );
 
   const updateIntake = (field, value) => { setPatientIntake(prev => ({ ...prev, [field]: value })); setIntakeSaved(false); };
   const updateObs = (field, value) => { setTherapistObs(prev => ({ ...prev, [field]: value })); setObsSaved(false); };
@@ -1059,8 +1108,527 @@ export default function App() {
           </>
         )}
 
-        {/* ==================== PROFILE VIEW ==================== */}
-        {view === 'profile' && currentUser && (
+        {/* ==================== PROVIDER DASHBOARD (Discord-style) ==================== */}
+        {view === 'profile' && currentUser && currentUser.role === 'provider' && (
+          <div className="flex-1 flex overflow-hidden">
+
+            {/* === LEFT: Patient Sidebar (like Discord server icons) === */}
+            <div className="w-[72px] shrink-0 bg-zinc-950 flex flex-col items-center py-3 gap-2 overflow-y-auto border-r border-zinc-900">
+              {/* Provider avatar */}
+              <div className="relative group mb-2">
+                {profilePic ? (
+                  <img src={profilePic} alt="Me" className="h-12 w-12 rounded-2xl object-cover ring-2 ring-indigo-500/40 hover:rounded-xl transition-all" />
+                ) : (
+                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-indigo-600 text-white font-bold text-lg hover:rounded-xl transition-all cursor-default">
+                    {capitalize(currentUser.username).charAt(0)}
+                  </div>
+                )}
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-900 text-white text-xs font-bold rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-zinc-800">
+                  {capitalize(currentUser.username)}
+                  <span className="text-zinc-400 font-normal"> (You)</span>
+                </div>
+              </div>
+
+              <div className="w-8 h-[2px] bg-zinc-800 rounded-full mb-1" />
+
+              {/* Search */}
+              <div className="relative group mb-1">
+                <button onClick={() => setPatientSearch(patientSearch ? '' : ' ')}
+                  className="flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-900 text-zinc-500 hover:bg-indigo-600 hover:text-white hover:rounded-xl transition-all">
+                  <Search size={18} />
+                </button>
+                <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-900 text-white text-xs font-bold rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-zinc-800">
+                  Search Patients
+                </div>
+              </div>
+
+              {/* Patient avatars */}
+              {filteredPatients.map(p => (
+                <div key={p.id} className="relative group"
+                  onMouseEnter={() => setHoveredPatient(p.id)}
+                  onMouseLeave={() => setHoveredPatient(null)}>
+                  <button onClick={() => selectPatient(p)}
+                    className={`flex h-12 w-12 items-center justify-center text-sm font-bold transition-all ${
+                      selectedPatient?.id === p.id
+                        ? 'rounded-xl bg-indigo-600 text-white ring-2 ring-indigo-400/50'
+                        : 'rounded-2xl bg-zinc-900 text-zinc-400 hover:rounded-xl hover:bg-indigo-600/80 hover:text-white'
+                    }`}>
+                    {capitalize(p.username).charAt(0)}
+                  </button>
+                  {/* Active indicator */}
+                  {selectedPatient?.id === p.id && (
+                    <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[6px] w-1 h-8 bg-white rounded-r-full" />
+                  )}
+                  {/* Hover tooltip */}
+                  <div className="absolute left-full ml-3 top-1/2 -translate-y-1/2 px-3 py-1.5 bg-zinc-900 text-white text-xs font-bold rounded-lg shadow-xl opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none whitespace-nowrap z-50 border border-zinc-800">
+                    {capitalize(p.username)}
+                    <span className="text-zinc-400 font-normal block text-[10px]">{p.email}</span>
+                  </div>
+                </div>
+              ))}
+
+              {/* Patient count badge */}
+              <div className="mt-auto pt-3 text-[9px] text-zinc-600 font-bold text-center leading-tight">
+                {providerPatients.length}/{15}
+              </div>
+            </div>
+
+            {/* === MIDDLE: Channels Sidebar === */}
+            <div className="w-[240px] shrink-0 bg-zinc-900/80 flex flex-col border-r border-zinc-800/50 overflow-hidden">
+              {/* Header */}
+              <div className="px-4 h-12 flex items-center justify-between border-b border-zinc-800/50 shrink-0">
+                <h3 className="text-sm font-bold text-zinc-100 truncate">
+                  {selectedPatient ? capitalize(selectedPatient.username) : 'Provider Dashboard'}
+                </h3>
+                {selectedPatient && (
+                  <button onClick={() => { setSelectedPatient(null); setActiveChannel('overview'); }}
+                    className="text-zinc-500 hover:text-zinc-300 transition-colors">
+                    <X size={14} />
+                  </button>
+                )}
+              </div>
+
+              {/* Search bar when active */}
+              {patientSearch !== '' && (
+                <div className="px-3 py-2 border-b border-zinc-800/50">
+                  <div className="flex items-center gap-2 bg-zinc-950 rounded-lg px-3 py-1.5">
+                    <Search size={14} className="text-zinc-500 shrink-0" />
+                    <input value={patientSearch.trim()} onChange={(e) => setPatientSearch(e.target.value)}
+                      className="bg-transparent text-xs text-zinc-200 outline-none w-full placeholder:text-zinc-600"
+                      placeholder="Find a patient..." autoFocus />
+                  </div>
+                </div>
+              )}
+
+              {/* Channel list */}
+              <div className="flex-1 overflow-y-auto px-2 py-3 space-y-4">
+                {selectedPatient ? (
+                  <>
+                    {['PATIENT INFO', 'CLINICAL', 'THERAPIST ONLY', 'RECORDS'].map(cat => (
+                      <div key={cat}>
+                        <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 px-2 mb-1">{cat}</p>
+                        {providerChannels.filter(c => c.category === cat).map(ch => (
+                          <button key={ch.id} onClick={() => {
+                            setActiveChannel(ch.id);
+                            if (ch.id === 'chat-history') loadPatientChatHistory(selectedPatient.id);
+                          }}
+                            className={`w-full flex items-center gap-2 px-2 py-1.5 rounded-md text-[13px] transition-colors ${
+                              activeChannel === ch.id
+                                ? 'bg-zinc-700/50 text-white font-medium'
+                                : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/50'
+                            }`}>
+                            {ch.icon === 'lock' ? <Lock size={14} className="text-zinc-500 shrink-0" /> : <Hash size={14} className="text-zinc-500 shrink-0" />}
+                            <span className="truncate">{ch.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    ))}
+                  </>
+                ) : (
+                  <div className="text-center py-8 px-4">
+                    <UserCircle size={48} className="mx-auto text-zinc-700 mb-3" />
+                    <p className="text-xs text-zinc-500">Select a patient from the sidebar to view their clinical profile.</p>
+                  </div>
+                )}
+              </div>
+
+              {/* Provider info footer */}
+              <div className="px-3 py-2 border-t border-zinc-800/50 bg-zinc-950/50 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-xs font-bold">
+                    {capitalize(currentUser.username).charAt(0)}
+                  </div>
+                  <div className="min-w-0">
+                    <p className="text-xs font-medium text-zinc-200 truncate">{capitalize(currentUser.username)}</p>
+                    <p className="text-[10px] text-zinc-500 truncate">{currentUser.email}</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* === RIGHT: Content Area === */}
+            <div className="flex-1 flex flex-col bg-zinc-900/40 overflow-hidden">
+              {/* Content header bar */}
+              <div className="px-6 h-12 flex items-center gap-2 border-b border-zinc-800/50 shrink-0">
+                {selectedPatient && activeChannel ? (
+                  <>
+                    {providerChannels.find(c => c.id === activeChannel)?.icon === 'lock'
+                      ? <Lock size={16} className="text-zinc-500" />
+                      : <Hash size={16} className="text-zinc-500" />
+                    }
+                    <span className="text-sm font-bold text-zinc-200">
+                      {providerChannels.find(c => c.id === activeChannel)?.label || activeChannel}
+                    </span>
+                    <span className="text-xs text-zinc-500 ml-2">— {capitalize(selectedPatient.username)}</span>
+                  </>
+                ) : (
+                  <span className="text-sm text-zinc-500">Select a patient to get started</span>
+                )}
+              </div>
+
+              {/* Content body */}
+              <div className="flex-1 overflow-y-auto p-6">
+                {!selectedPatient ? (
+                  <div className="flex flex-col items-center justify-center h-full text-center">
+                    <div className="h-20 w-20 rounded-3xl bg-zinc-800/50 flex items-center justify-center mb-4">
+                      <Globe size={40} className="text-zinc-700" />
+                    </div>
+                    <h3 className="text-xl font-bold text-zinc-300 mb-2">Welcome Back</h3>
+                    <p className="text-sm text-zinc-500 max-w-md">Select a patient from the left sidebar to view their clinical profile, chat history, and observations.</p>
+                    <p className="text-xs text-zinc-600 mt-4">{providerPatients.length} patients assigned · {15 - providerPatients.length} slots available</p>
+                  </div>
+                ) : activeChannel === 'overview' ? (
+                  /* ===== OVERVIEW ===== */
+                  <div className="max-w-2xl space-y-6">
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+                      <div className="flex items-center gap-4 mb-4">
+                        <div className="h-16 w-16 rounded-2xl bg-indigo-600/20 text-indigo-400 flex items-center justify-center text-2xl font-bold">
+                          {capitalize(selectedPatient.username).charAt(0)}
+                        </div>
+                        <div>
+                          <h3 className="text-lg font-bold text-zinc-100">{capitalize(selectedPatient.username)}</h3>
+                          <p className="text-sm text-zinc-500">{selectedPatient.email}</p>
+                          {selectedPatient.age && <p className="text-xs text-zinc-600">Age: {selectedPatient.age}</p>}
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4 text-xs">
+                        <div className="rounded-xl bg-zinc-950/50 p-3 border border-zinc-800">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-bold mb-1">Joined</p>
+                          <p className="text-zinc-300">{selectedPatient.created_at ? new Date(selectedPatient.created_at).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/50 p-3 border border-zinc-800">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-bold mb-1">Last Active</p>
+                          <p className="text-zinc-300">{selectedPatient.last_login ? new Date(selectedPatient.last_login).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/50 p-3 border border-zinc-800">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-bold mb-1">Distress Level</p>
+                          <p className="text-zinc-300 font-mono">{patientIntake.distressLevel ?? '—'} / 10</p>
+                        </div>
+                        <div className="rounded-xl bg-zinc-950/50 p-3 border border-zinc-800">
+                          <p className="text-zinc-500 text-[10px] uppercase tracking-widest font-bold mb-1">Assigned</p>
+                          <p className="text-zinc-300">{selectedPatient.assigned_at ? new Date(selectedPatient.assigned_at).toLocaleDateString() : 'N/A'}</p>
+                        </div>
+                      </div>
+                    </div>
+                    {patientIntake.whatBringsYou && (
+                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
+                        <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">Quick Summary</h4>
+                        <p className="text-sm text-zinc-300 leading-relaxed">{patientIntake.whatBringsYou}</p>
+                      </div>
+                    )}
+                  </div>
+
+                ) : activeChannel === 'presenting' ? (
+                  /* ===== 1. PRESENTING CONCERN ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">People often don't know the real issue yet. This captures the conscious narrative, not the full truth.</p>
+                    </div>
+                    <CTextArea label="What brings you to therapy right now?" field="whatBringsYou" placeholder="Open-ended response..." rows={3} />
+                    <CTextArea label="Why seek help at this moment?" field="whyNow" placeholder="Why now?" rows={2} />
+                    <CTextArea label="What feels most urgent?" field="mostUrgent" placeholder="Most pressing concern..." rows={2} />
+                    <CSlider label="Distress Level" field="distressLevel" min={0} max={10} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CField label="Duration of Problem" field="problemDuration" placeholder="e.g. 6 months" />
+                      <CField label="Getting Worse / Staying Same" field="gettingWorse" placeholder="Trajectory..." />
+                    </div>
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'history' ? (
+                  /* ===== 2. MENTAL HEALTH HISTORY ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">I'm not just tracking disorders—I'm tracking how this person relates to help, authority, and vulnerability.</p>
+                    </div>
+                    <CTextArea label="Previous Therapy" field="previousTherapy" placeholder="What helped / what didn't..." rows={3} />
+                    <CTextArea label="Past Diagnoses" field="pastDiagnoses" placeholder="If any..." rows={2} />
+                    <CTextArea label="Psychiatric Hospitalizations" field="hospitalizations" placeholder="Details if applicable..." rows={2} />
+                    <CTextArea label="Current or Past Medications" field="medications" placeholder="Names, dosages, duration..." rows={2} />
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CSelect label="History of Self-Harm or SI" field="selfHarmHistory" options={['No', 'Yes - past', 'Yes - current']} />
+                      <CField label="When (if applicable)" field="selfHarmWhen" placeholder="Timeline..." />
+                    </div>
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'risk' ? (
+                  /* ===== 3. RISK & SAFETY ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-red-500/5 border border-red-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-red-300/70 italic leading-relaxed">Asking doesn't create risk. Avoiding it does.</p>
+                    </div>
+                    <CSelect label="Thoughts of harming yourself?" field="thoughtsHarmSelf" options={['No', 'Past only', 'Current - passive', 'Current - active']} />
+                    <CSelect label="Thoughts of harming others?" field="thoughtsHarmOthers" options={['No', 'Past only', 'Current - passive', 'Current - active']} />
+                    <CSelect label="Current plans or intent?" field="currentPlans" options={['No', 'Vague thoughts', 'Specific plan', 'Plan with intent']} />
+                    <CSelect label="Access to means?" field="accessToMeans" options={['No', 'Yes - limited', 'Yes - readily available']} />
+                    <CTextArea label="Protective Factors" field="protectiveFactors" placeholder="People, beliefs, responsibilities..." rows={3} />
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'life' ? (
+                  /* ===== 4. LIFE CONTEXT ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">Symptoms don't exist in a vacuum. This section often explains everything without naming it.</p>
+                    </div>
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 pt-2">A. Relationships</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CField label="Romantic Status" field="romanticStatus" placeholder="Single, partnered..." />
+                      <CField label="Current Conflicts" field="conflicts" placeholder="Estrangements, disputes..." />
+                    </div>
+                    <CTextArea label="Family Dynamics" field="familyDynamics" placeholder="Describe family relationships..." rows={2} />
+                    <CTextArea label="Close Friendships" field="closeFriendships" placeholder="Support network..." rows={2} />
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 pt-2">B. Work / School</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CField label="Occupation / Studies" field="occupation" placeholder="Current role..." />
+                      <CSelect label="Job Satisfaction" field="jobSatisfaction" options={['Very satisfied', 'Satisfied', 'Neutral', 'Dissatisfied', 'Very dissatisfied', 'N/A']} />
+                    </div>
+                    <CTextArea label="Work/School Stressors" field="workStressors" placeholder="Instability, conflicts..." rows={2} />
+                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 pt-2">C. Living Situation</p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <CSelect label="Living Arrangement" field="livingSituation" options={['Alone', 'With partner', 'With family', 'With roommates', 'Group home', 'Unstable/homeless']} />
+                      <CSelect label="Housing Stability" field="housingStability" options={['Stable', 'Somewhat stable', 'Unstable', 'At risk']} />
+                    </div>
+                    <CSelect label="Safety at Home" field="safetyAtHome" options={['Feels safe', 'Somewhat safe', 'Does not feel safe', 'Unsafe - needs intervention']} />
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'developmental' ? (
+                  /* ===== 5. DEVELOPMENTAL ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">This isn't excavation yet—this is mapping the terrain.</p>
+                    </div>
+                    <CTextArea label="Family of Origin" field="familyOfOrigin" placeholder="Parents, siblings, family structure..." rows={3} />
+                    <CSelect label="Childhood Environment" field="childhoodEnvironment" options={['Supportive', 'Mixed', 'Chaotic', 'Neglectful', 'Abusive', 'Other']} />
+                    <CTextArea label="Significant Losses or Transitions" field="significantLosses" placeholder="Deaths, moves, divorces..." rows={3} />
+                    <CTextArea label="Trauma History" field="traumaHistory" placeholder="Only what they're ready to share..." rows={3} hint="Without forcing detail — just mapping the terrain." />
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'coping' ? (
+                  /* ===== 6. COPING ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">I'm listening for avoidance vs engagement, control vs collapse, connection vs isolation.</p>
+                    </div>
+                    <CTextArea label="How do you cope when stressed?" field="copingWhenStressed" placeholder="Coping mechanisms..." rows={3} />
+                    <CTextArea label="What helps you calm down?" field="whatCalms" placeholder="Regulation strategies..." rows={2} />
+                    <CTextArea label="What makes things worse?" field="whatMakesWorse" placeholder="Triggers, patterns..." rows={2} />
+                    <CTextArea label="Substance Use" field="substanceUse" placeholder="Alcohol, cannabis, etc..." rows={2} />
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'strengths' ? (
+                  /* ===== 7. STRENGTHS ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-emerald-500/5 border border-emerald-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-emerald-300/70 italic leading-relaxed">I treat strengths as active ingredients, not footnotes.</p>
+                    </div>
+                    <CTextArea label="Personal Strengths" field="personalStrengths" placeholder="Character qualities..." rows={3} />
+                    <CTextArea label="Past Successes" field="pastSuccesses" placeholder="Things they've overcome..." rows={2} />
+                    <CTextArea label="Values or Beliefs That Matter" field="values" placeholder="What gives life meaning..." rows={2} />
+                    <CTextArea label="People Who Support Them" field="supportPeople" placeholder="Support network..." rows={2} />
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'goals' ? (
+                  /* ===== 8. GOALS ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">🧠</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">Goals tell me how the patient imagines change—and what they fear losing.</p>
+                    </div>
+                    <CTextArea label="What would be different if therapy helped?" field="whatWouldBeDifferent" placeholder="Their vision of change..." rows={3} />
+                    <CTextArea label="Short-Term Hopes" field="shortTermHopes" placeholder="Next few weeks/months..." rows={2} />
+                    <CTextArea label="Long-Term Vision" field="longTermVision" placeholder="6 months - 1 year..." rows={2} />
+                    <CTextArea label="What they don't want from therapy" field="dontWantFromTherapy" placeholder="Boundaries, fears..." rows={2} />
+                    <button onClick={savePatientIntake} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${intakeSaved ? 'bg-emerald-600' : 'bg-indigo-600 hover:bg-indigo-500'}`}>
+                      {intakeSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'observations' ? (
+                  /* ===== 9. THERAPIST OBSERVATIONS (PRIVATE) ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-red-500/5 border border-red-500/10 px-4 py-3">
+                      <span className="text-sm">🔒</span>
+                      <p className="text-[11px] text-red-300/70 italic leading-relaxed">This is where intuition meets discipline. Not shared with the patient.</p>
+                    </div>
+                    <CSelect label="Affect" field="affect" obj="obs" options={['Flat', 'Anxious', 'Warm', 'Guarded', 'Irritable', 'Labile', 'Constricted', 'Appropriate', 'Elevated']} />
+                    <CTextArea label="Speech Patterns" field="speechPatterns" obj="obs" placeholder="Rate, volume, coherence..." rows={2} />
+                    <CSelect label="Insight Level" field="insightLevel" obj="obs" options={['Poor', 'Limited', 'Fair', 'Good', 'Excellent']} />
+                    <CSelect label="Attachment Signals" field="attachmentSignals" obj="obs" options={['Secure', 'Anxious', 'Avoidant', 'Disorganized', 'Mixed']} />
+                    <CTextArea label="Initial Hypotheses (Tentative)" field="initialHypotheses" obj="obs" placeholder="Working formulation..." rows={4} />
+                    <button onClick={saveTherapistObs} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${obsSaved ? 'bg-emerald-600' : 'bg-red-600/80 hover:bg-red-600'}`}>
+                      {obsSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save Private Notes</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'modern' ? (
+                  /* ===== MODERN ADD-ONS ===== */
+                  <div className="max-w-2xl space-y-4">
+                    <div className="flex items-start gap-2 rounded-xl bg-indigo-500/5 border border-indigo-500/10 px-4 py-3">
+                      <span className="text-sm">✨</span>
+                      <p className="text-[11px] text-indigo-300/70 italic leading-relaxed">Especially important for digital therapy contexts.</p>
+                    </div>
+                    <CSelect label="Preferred Communication Style" field="communicationStyle" options={['Direct', 'Gentle', 'Reflective', 'Challenging', 'Collaborative']} />
+                    <CSelect label="Emotional Intensity Tolerance" field="emotionalIntensityTolerance" options={['Low - needs gentle approach', 'Moderate', 'High - can handle direct confrontation']} />
+                    <CTextArea label="Topics to Avoid Initially" field="topicsToAvoid" placeholder="Sensitive areas..." rows={2} />
+                    <CTextArea label="Cultural Considerations" field="culturalConsiderations" placeholder="Identity, background..." rows={2} />
+                    <CField label="Language Preferences" field="languagePreferences" placeholder="Primary language, translation needs..." />
+                    <button onClick={saveTherapistObs} className={`w-full rounded-xl py-3 text-sm font-bold text-white transition-all flex items-center justify-center gap-2 ${obsSaved ? 'bg-emerald-600' : 'bg-red-600/80 hover:bg-red-600'}`}>
+                      {obsSaved ? <><Check size={14} /> Saved</> : <><Save size={14} /> Save Private Notes</>}
+                    </button>
+                  </div>
+
+                ) : activeChannel === 'chat-history' ? (
+                  /* ===== CHAT HISTORY (read-only) ===== */
+                  <div className="max-w-3xl space-y-4 h-full flex flex-col">
+                    {/* Search bar */}
+                    <div className="flex items-center gap-3">
+                      <div className="flex-1 flex items-center gap-2 bg-zinc-950 rounded-xl px-4 py-2.5 border border-zinc-800">
+                        <Search size={16} className="text-zinc-500 shrink-0" />
+                        <input value={chatSearch} onChange={(e) => setChatSearch(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === 'Enter') loadPatientChatHistory(selectedPatient.id, chatSearch); }}
+                          className="bg-transparent text-sm text-zinc-200 outline-none w-full placeholder:text-zinc-600"
+                          placeholder="Search chat messages..." />
+                      </div>
+                      <button onClick={() => loadPatientChatHistory(selectedPatient.id, chatSearch)}
+                        className="rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2.5 text-sm font-bold transition-colors flex items-center gap-2">
+                        <Search size={14} /> Search
+                      </button>
+                    </div>
+
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto space-y-1 rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+                      {chatHistoryLoading ? (
+                        <div className="flex items-center justify-center py-12"><Loader2 size={24} className="animate-spin text-zinc-600" /></div>
+                      ) : patientChatHistory.length === 0 ? (
+                        <div className="text-center py-12">
+                          <MessageSquare size={40} className="mx-auto text-zinc-700 mb-3" />
+                          <p className="text-sm text-zinc-500">
+                            {chatSearch ? 'No messages match your search.' : 'Click Search to load chat history.'}
+                          </p>
+                        </div>
+                      ) : (
+                        patientChatHistory.map((msg, i) => (
+                          <div key={i} className={`flex gap-3 py-2 px-3 rounded-lg hover:bg-zinc-900/50 ${msg.type === 'user' ? '' : ''}`}>
+                            <div className={`h-8 w-8 shrink-0 rounded-full flex items-center justify-center text-xs font-bold ${
+                              msg.type === 'user' ? 'bg-indigo-600/20 text-indigo-400' : 'bg-zinc-800 text-zinc-400'
+                            }`}>
+                              {msg.type === 'user' ? capitalize(selectedPatient.username).charAt(0) : <Bot size={14} />}
+                            </div>
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className={`text-xs font-bold ${msg.type === 'user' ? 'text-indigo-400' : 'text-zinc-400'}`}>
+                                  {msg.type === 'user' ? capitalize(selectedPatient.username) : 'Teen Zen Bot'}
+                                </span>
+                                <span className="text-[10px] text-zinc-600">
+                                  {msg.created_at ? new Date(msg.created_at).toLocaleString() : ''}
+                                </span>
+                              </div>
+                              <p className="text-sm text-zinc-300 leading-relaxed whitespace-pre-wrap">{msg.text}</p>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+
+                ) : activeChannel === 'tasks' ? (
+                  /* ===== TASKS ===== */
+                  <div className="max-w-2xl space-y-4">
+                    {/* Create task form */}
+                    <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+                      <h4 className="text-xs font-bold uppercase tracking-widest text-amber-400 mb-3 flex items-center gap-2">
+                        <Plus size={14} /> Assign a Task to {capitalize(selectedPatient.username)}
+                      </h4>
+                      <form onSubmit={(e) => handleCreateTask(e, selectedPatient.id)} className="space-y-3">
+                        <input value={newTask.title} onChange={(e) => setNewTask({...newTask, title: e.target.value})}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          placeholder="Task title" required />
+                        <textarea value={newTask.description} onChange={(e) => setNewTask({...newTask, description: e.target.value})}
+                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700 resize-none h-16"
+                          placeholder="Optional description..." />
+                        <div className="flex gap-3">
+                          <input type="date" value={newTask.due_date} onChange={(e) => setNewTask({...newTask, due_date: e.target.value})}
+                            className="rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-2.5 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
+                          <input type="hidden" value={selectedPatient.id} />
+                          <button type="submit"
+                            className="flex-1 rounded-xl bg-amber-600 py-2.5 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all flex items-center justify-center gap-2">
+                            <Plus size={14} /> Assign
+                          </button>
+                        </div>
+                        {taskError && (
+                          <div className="flex items-center gap-2 rounded-xl bg-red-500/10 px-3 py-2 text-xs text-red-400 ring-1 ring-red-500/20">
+                            <ShieldAlert size={14} /> {taskError}
+                          </div>
+                        )}
+                      </form>
+                    </div>
+
+                    {/* Task list */}
+                    <div className="space-y-2">
+                      {tasks.filter(t => t.assigned_to === selectedPatient.id || String(t.assigned_to) === String(selectedPatient.id)).length === 0 ? (
+                        <div className="text-center py-8">
+                          <ClipboardList size={40} className="mx-auto text-zinc-700 mb-3" />
+                          <p className="text-sm text-zinc-500">No tasks assigned to {capitalize(selectedPatient.username)} yet.</p>
+                        </div>
+                      ) : (
+                        tasks.filter(t => t.assigned_to === selectedPatient.id || String(t.assigned_to) === String(selectedPatient.id)).map(task => (
+                          <div key={task.id} className={`flex items-start gap-4 rounded-2xl border p-4 transition-all ${
+                            task.status === 'completed' ? 'border-emerald-900/30 bg-emerald-500/5' : 'border-zinc-800 bg-zinc-950/50'
+                          }`}>
+                            <div className="flex-1 min-w-0">
+                              <p className={`text-sm font-medium ${task.status === 'completed' ? 'text-zinc-500 line-through' : 'text-zinc-100'}`}>{task.title}</p>
+                              {task.description && <p className="text-xs text-zinc-500 mt-1">{task.description}</p>}
+                              <div className="flex items-center gap-3 mt-2">
+                                {task.due_date && (
+                                  <span className="flex items-center gap-1 text-[10px] text-zinc-600 uppercase tracking-wider">
+                                    <Calendar size={10} /> {task.due_date}
+                                  </span>
+                                )}
+                                <span className={`text-[10px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full ${
+                                  task.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400' : 'bg-amber-500/10 text-amber-400'
+                                }`}>{task.status}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ==================== PROFILE VIEW (Users) ==================== */}
+        {view === 'profile' && currentUser && currentUser.role !== 'provider' && (
           <div className="flex-1 overflow-y-auto p-6">
             <div className="mx-auto max-w-3xl space-y-8">
               {/* User Info Card */}
@@ -1209,303 +1777,6 @@ export default function App() {
                 )}
               </div>
 
-              {/* ========== ROLE-BASED CONTENT ========== */}
-              {currentUser.role === 'provider' ? (
-                <>
-                  {/* ===== C. PROVIDER DASHBOARD ===== */}
-                  <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
-                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-2">
-                      <Globe size={16} /> C. Provider Dashboard
-                    </h3>
-                    <p className="text-[10px] text-zinc-500 mb-6">
-                      {providerPatients.length} / {15} patients assigned
-                    </p>
-
-                    {/* Patient Grid */}
-                    {providerPatients.length === 0 ? (
-                      <div className="text-center py-8">
-                        <UserCircle size={48} className="mx-auto text-zinc-800 mb-3" />
-                        <p className="text-zinc-500 text-sm">No patients assigned yet.</p>
-                        <p className="text-zinc-600 text-xs mt-1">Users will be automatically assigned when they register.</p>
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 mb-6">
-                        {providerPatients.map(p => (
-                          <button key={p.id} onClick={() => selectPatient(p)}
-                            className={`flex flex-col items-center gap-1 rounded-2xl border p-4 transition-all text-center ${
-                              selectedPatient?.id === p.id
-                                ? 'border-indigo-500 bg-indigo-500/10 ring-1 ring-indigo-500/30'
-                                : 'border-zinc-800 bg-zinc-950/50 hover:border-zinc-700'
-                            }`}>
-                            <UserCircle size={28} className={selectedPatient?.id === p.id ? 'text-indigo-400' : 'text-zinc-600'} />
-                            <span className="text-xs font-bold text-zinc-200 truncate w-full">{capitalize(p.username)}</span>
-                            <span className="text-[9px] text-zinc-600 truncate w-full">{p.email}</span>
-                          </button>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* Selected Patient Clinical Forms */}
-                    {selectedPatient && (
-                      <div className="space-y-3 mt-4">
-                        <div className="flex items-center justify-between border-b border-zinc-800 pb-3 mb-2">
-                          <h4 className="text-sm font-bold text-zinc-200">Clinical Profile: <span className="text-indigo-400">{capitalize(selectedPatient.username)}</span></h4>
-                          <button onClick={() => setSelectedPatient(null)} className="text-[10px] text-zinc-500 hover:text-zinc-300 uppercase tracking-wider font-bold">
-                            <X size={14} />
-                          </button>
-                        </div>
-
-                        {/* 1. Presenting Concern */}
-                        <SectionCard id="presenting" title="1. Presenting Concern" icon="📋" color="indigo"
-                          lens="People often don't know the real issue yet. This captures the conscious narrative, not the full truth.">
-                          <CTextArea label="What brings you to therapy right now?" field="whatBringsYou" placeholder="Open-ended response..." rows={3} />
-                          <CTextArea label="Why seek help at this moment?" field="whyNow" placeholder="Why now?" rows={2} />
-                          <CTextArea label="What feels most urgent?" field="mostUrgent" placeholder="Most pressing concern..." rows={2} />
-                          <CSlider label="Distress Level" field="distressLevel" min={0} max={10} />
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <CField label="Duration of Problem" field="problemDuration" placeholder="e.g. 6 months, 2 years" />
-                            <CField label="Getting Worse / Staying Same" field="gettingWorse" placeholder="Trajectory..." />
-                          </div>
-                        </SectionCard>
-
-                        {/* 2. Mental Health History */}
-                        <SectionCard id="history" title="2. Mental Health History" icon="📖" color="indigo"
-                          lens="I'm not just tracking disorders—I'm tracking how this person relates to help, authority, and vulnerability.">
-                          <CTextArea label="Previous Therapy" field="previousTherapy" placeholder="What helped / what didn't..." rows={3} />
-                          <CTextArea label="Past Diagnoses" field="pastDiagnoses" placeholder="If any..." rows={2} />
-                          <CTextArea label="Psychiatric Hospitalizations" field="hospitalizations" placeholder="Details if applicable..." rows={2} />
-                          <CTextArea label="Current or Past Medications" field="medications" placeholder="Names, dosages, duration..." rows={2} />
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <CSelect label="History of Self-Harm or SI" field="selfHarmHistory" options={['No', 'Yes - past', 'Yes - current']} />
-                            <CField label="When (if applicable)" field="selfHarmWhen" placeholder="Timeline..." />
-                          </div>
-                        </SectionCard>
-
-                        {/* 3. Risk & Safety Screening */}
-                        <SectionCard id="risk" title="3. Risk & Safety Screening" icon="🛡️" color="red"
-                          lens="Asking doesn't create risk. Avoiding it does.">
-                          <CSelect label="Thoughts of harming yourself?" field="thoughtsHarmSelf" options={['No', 'Past only', 'Current - passive', 'Current - active']} />
-                          <CSelect label="Thoughts of harming others?" field="thoughtsHarmOthers" options={['No', 'Past only', 'Current - passive', 'Current - active']} />
-                          <CSelect label="Current plans or intent?" field="currentPlans" options={['No', 'Vague thoughts', 'Specific plan', 'Plan with intent']} />
-                          <CSelect label="Access to means?" field="accessToMeans" options={['No', 'Yes - limited', 'Yes - readily available']} />
-                          <CTextArea label="Protective Factors" field="protectiveFactors" placeholder="People, beliefs, responsibilities that keep them safe..." rows={3} />
-                        </SectionCard>
-
-                        {/* 4. Life Context Snapshot */}
-                        <SectionCard id="life" title="4. Life Context Snapshot" icon="🌍" color="indigo"
-                          lens="Symptoms don't exist in a vacuum. This section often explains everything without naming it.">
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mt-2">A. Relationships</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <CField label="Romantic Status" field="romanticStatus" placeholder="Single, partnered, etc." />
-                            <CField label="Current Conflicts" field="conflicts" placeholder="Estrangements, disputes..." />
-                          </div>
-                          <CTextArea label="Family Dynamics" field="familyDynamics" placeholder="Describe family relationships..." rows={2} />
-                          <CTextArea label="Close Friendships" field="closeFriendships" placeholder="Support network..." rows={2} />
-
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mt-4">B. Work / School</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <CField label="Occupation / Studies" field="occupation" placeholder="Current role..." />
-                            <CSelect label="Job Satisfaction" field="jobSatisfaction" options={['Very satisfied', 'Satisfied', 'Neutral', 'Dissatisfied', 'Very dissatisfied', 'N/A']} />
-                          </div>
-                          <CTextArea label="Work/School Stressors" field="workStressors" placeholder="Instability, conflicts..." rows={2} />
-
-                          <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-400 mt-4">C. Living Situation</p>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            <CSelect label="Living Arrangement" field="livingSituation" options={['Alone', 'With partner', 'With family', 'With roommates', 'Group home', 'Unstable/homeless']} />
-                            <CSelect label="Housing Stability" field="housingStability" options={['Stable', 'Somewhat stable', 'Unstable', 'At risk']} />
-                          </div>
-                          <CSelect label="Safety at Home" field="safetyAtHome" options={['Feels safe', 'Somewhat safe', 'Does not feel safe', 'Unsafe - needs intervention']} />
-                        </SectionCard>
-
-                        {/* 5. Developmental & Family Background */}
-                        <SectionCard id="developmental" title="5. Developmental & Family Background" icon="🌱" color="indigo"
-                          lens="This isn't excavation yet—this is mapping the terrain.">
-                          <CTextArea label="Family of Origin" field="familyOfOrigin" placeholder="Parents, siblings, family structure..." rows={3} />
-                          <CSelect label="Childhood Environment" field="childhoodEnvironment" options={['Supportive', 'Mixed', 'Chaotic', 'Neglectful', 'Abusive', 'Other']} />
-                          <CTextArea label="Significant Losses or Transitions" field="significantLosses" placeholder="Deaths, moves, divorces, major changes..." rows={3} />
-                          <CTextArea label="Trauma History" field="traumaHistory" placeholder="Only what they're ready to share..." rows={3} hint="Without forcing detail — just mapping the terrain." />
-                        </SectionCard>
-
-                        {/* 6. Coping & Regulation Style */}
-                        <SectionCard id="coping" title="6. Coping & Regulation Style" icon="⚡" color="indigo"
-                          lens="I'm listening for avoidance vs engagement, control vs collapse, connection vs isolation.">
-                          <CTextArea label="How do you cope when stressed?" field="copingWhenStressed" placeholder="Coping mechanisms..." rows={3} />
-                          <CTextArea label="What helps you calm down?" field="whatCalms" placeholder="Regulation strategies..." rows={2} />
-                          <CTextArea label="What makes things worse?" field="whatMakesWorse" placeholder="Triggers, patterns..." rows={2} />
-                          <CTextArea label="Substance Use" field="substanceUse" placeholder="Alcohol, cannabis, etc. — frequency, amount..." rows={2} />
-                        </SectionCard>
-
-                        {/* 7. Strengths & Resources */}
-                        <SectionCard id="strengths" title="7. Strengths & Resources" icon="💪" color="emerald"
-                          lens="I treat strengths as active ingredients, not footnotes.">
-                          <CTextArea label="Personal Strengths" field="personalStrengths" placeholder="What they're good at, character qualities..." rows={3} />
-                          <CTextArea label="Past Successes" field="pastSuccesses" placeholder="Things they've overcome or achieved..." rows={2} />
-                          <CTextArea label="Values or Beliefs That Matter" field="values" placeholder="What gives life meaning..." rows={2} />
-                          <CTextArea label="People Who Support Them" field="supportPeople" placeholder="Support network..." rows={2} />
-                        </SectionCard>
-
-                        {/* 8. Goals for Therapy */}
-                        <SectionCard id="goals" title="8. Goals for Therapy" icon="🎯" color="indigo"
-                          lens="Goals tell me how the patient imagines change—and what they fear losing.">
-                          <CTextArea label="What would be different if therapy helped?" field="whatWouldBeDifferent" placeholder="Their vision of change..." rows={3} />
-                          <CTextArea label="Short-Term Hopes" field="shortTermHopes" placeholder="Next few weeks/months..." rows={2} />
-                          <CTextArea label="Long-Term Vision" field="longTermVision" placeholder="6 months - 1 year..." rows={2} />
-                          <CTextArea label="What they don't want from therapy" field="dontWantFromTherapy" placeholder="Boundaries, fears about the process..." rows={2} />
-                        </SectionCard>
-
-                        {/* Save Clinical Intake */}
-                        <button onClick={savePatientIntake}
-                          className={`w-full rounded-2xl py-3.5 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
-                            intakeSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-indigo-600 shadow-indigo-500/20 hover:bg-indigo-500'
-                          }`}>
-                          {intakeSaved ? <><Check size={16} /> Intake Saved!</> : <><Save size={16} /> Save Clinical Intake</>}
-                        </button>
-
-                        {/* 9. Therapist Observations (PRIVATE) */}
-                        <div className="mt-4 pt-4 border-t-2 border-red-500/20">
-                          <SectionCard id="observations" title="9. Therapist Observations (Private)" icon="🔒" color="red"
-                            lens="This is where intuition meets discipline. Not shared verbatim with the patient.">
-                            <CSelect label="Affect" field="affect" obj="obs" options={['Flat', 'Anxious', 'Warm', 'Guarded', 'Irritable', 'Labile', 'Constricted', 'Appropriate', 'Elevated']} />
-                            <CTextArea label="Speech Patterns" field="speechPatterns" obj="obs" placeholder="Rate, volume, coherence, tangentiality..." rows={2} />
-                            <CSelect label="Insight Level" field="insightLevel" obj="obs" options={['Poor', 'Limited', 'Fair', 'Good', 'Excellent']} />
-                            <CSelect label="Attachment Signals" field="attachmentSignals" obj="obs" options={['Secure', 'Anxious', 'Avoidant', 'Disorganized', 'Mixed']} />
-                            <CTextArea label="Initial Hypotheses (Tentative)" field="initialHypotheses" obj="obs" placeholder="Working formulation..." rows={4} />
-                          </SectionCard>
-
-                          {/* Modern Add-Ons */}
-                          <div className="mt-3">
-                            <SectionCard id="modern" title="Modern Add-Ons" icon="✨" color="indigo"
-                              lens="Especially important for digital therapy contexts.">
-                              <CSelect label="Preferred Communication Style" field="communicationStyle" options={['Direct', 'Gentle', 'Reflective', 'Challenging', 'Collaborative']} />
-                              <CSelect label="Emotional Intensity Tolerance" field="emotionalIntensityTolerance" options={['Low - needs gentle approach', 'Moderate', 'High - can handle direct confrontation']} />
-                              <CTextArea label="Topics to Avoid Initially" field="topicsToAvoid" placeholder="Sensitive areas to approach carefully..." rows={2} />
-                              <CTextArea label="Cultural Considerations" field="culturalConsiderations" placeholder="Identity, background, cultural context..." rows={2} />
-                              <CField label="Language Preferences" field="languagePreferences" placeholder="Primary language, translation needs..." />
-                            </SectionCard>
-                          </div>
-
-                          {/* Save Observations */}
-                          <button onClick={saveTherapistObs}
-                            className={`w-full rounded-2xl py-3.5 mt-3 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
-                              obsSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-red-600/80 shadow-red-500/20 hover:bg-red-600'
-                            }`}>
-                            {obsSaved ? <><Check size={16} /> Observations Saved!</> : <><Save size={16} /> Save Private Observations</>}
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {/* Provider's Own A & B */}
-                  <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
-                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-6">
-                      <UserCircle size={16} /> A. Provider Identifying Information
-                    </h3>
-                    <div className="space-y-4">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
-                          <input value={profileData.fullName} onChange={(e) => updateProfile('fullName', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
-                            placeholder="Legal full name" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
-                          <input value={profileData.preferredName} onChange={(e) => updateProfile('preferredName', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
-                            placeholder="What you'd like to be called" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Pronouns</label>
-                          <select value={profileData.pronouns} onChange={(e) => updateProfile('pronouns', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
-                            <option value="">Select...</option>
-                            <option value="he/him">He / Him</option>
-                            <option value="she/her">She / Her</option>
-                            <option value="they/them">They / Them</option>
-                            <option value="other">Other</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Date of Birth</label>
-                          <input type="date" value={profileData.dob} onChange={(e) => updateProfile('dob', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300" />
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Contact Phone</label>
-                          <input type="tel" value={profileData.contactPhone} onChange={(e) => updateProfile('contactPhone', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
-                            placeholder="(555) 123-4567" />
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Contact Email</label>
-                          <input type="email" value={profileData.contactEmail} onChange={(e) => updateProfile('contactEmail', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
-                            placeholder="email@example.com" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
-                    <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-amber-400 mb-6">
-                      <ShieldCheck size={16} /> B. Consent & Logistics
-                    </h3>
-                    <div className="space-y-4">
-                      <div className="flex items-start gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-950/50">
-                        <button onClick={() => updateProfile('consentAcknowledged', !profileData.consentAcknowledged)}
-                          className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center border transition-all ${profileData.consentAcknowledged ? 'bg-indigo-600 border-indigo-500' : 'border-zinc-700'}`}>
-                          {profileData.consentAcknowledged && <Check size={14} className="text-white" />}
-                        </button>
-                        <div>
-                          <p className="text-sm text-zinc-200 font-medium">Informed Consent Acknowledged</p>
-                          <p className="text-xs text-zinc-500 mt-1">Client has been informed of their rights, therapy process, and limits of confidentiality.</p>
-                        </div>
-                      </div>
-                      <div className="flex items-start gap-3 p-4 rounded-xl border border-zinc-800 bg-zinc-950/50">
-                        <button onClick={() => updateProfile('confidentialityExplained', !profileData.confidentialityExplained)}
-                          className={`mt-0.5 shrink-0 w-5 h-5 rounded flex items-center justify-center border transition-all ${profileData.confidentialityExplained ? 'bg-indigo-600 border-indigo-500' : 'border-zinc-700'}`}>
-                          {profileData.confidentialityExplained && <Check size={14} className="text-white" />}
-                        </button>
-                        <div>
-                          <p className="text-sm text-zinc-200 font-medium">Confidentiality Limits Explained</p>
-                          <p className="text-xs text-zinc-500 mt-1">Harm to self/others, abuse, court orders — all limits discussed.</p>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Session Format</label>
-                          <select value={profileData.sessionFormat} onChange={(e) => updateProfile('sessionFormat', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all text-zinc-300">
-                            <option value="">Select...</option>
-                            <option value="In-Person">In-Person</option>
-                            <option value="Telehealth">Telehealth</option>
-                            <option value="Hybrid">Hybrid</option>
-                          </select>
-                        </div>
-                        <div className="space-y-1">
-                          <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Payment / Insurance</label>
-                          <input value={profileData.paymentInfo} onChange={(e) => updateProfile('paymentInfo', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
-                            placeholder="Insurance info or payment method" />
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <button onClick={saveProfileData}
-                    className={`w-full rounded-2xl py-4 text-sm font-bold text-white shadow-lg transition-all flex items-center justify-center gap-2 ${
-                      profileSaved ? 'bg-emerald-600 shadow-emerald-500/20' : 'bg-amber-600 shadow-amber-500/20 hover:bg-amber-500'
-                    }`}>
-                    {profileSaved ? <><Check size={18} /> Profile Saved!</> : <><Save size={18} /> Save Provider Profile</>}
-                  </button>
-                </>
-              ) : (
-                <>
               {/* ===== SECTION A: Identifying Information ===== */}
               <div className="rounded-3xl border border-zinc-900 bg-zinc-900/30 p-8 backdrop-blur-xl ring-1 ring-white/5">
                 <h3 className="flex items-center gap-2 text-sm font-bold uppercase tracking-widest text-indigo-400 mb-6">
@@ -1807,8 +2078,6 @@ export default function App() {
                 }`}>
                 {profileSaved ? <><Check size={18} /> Profile Saved!</> : <><Save size={18} /> Save Profile</>}
               </button>
-                </>
-              )}
 
             </div>
           </div>

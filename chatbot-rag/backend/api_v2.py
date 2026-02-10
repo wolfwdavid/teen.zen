@@ -250,9 +250,33 @@ async def get_profile(authorization: str = Header(None)):
 
 # --- CHAT HISTORY ---
 @app.get("/api/chat/history")
-async def get_history(authorization: str = Header(None), year: Optional[int] = None, quarter: Optional[int] = None):
+async def get_history(authorization: str = Header(None), year: Optional[int] = None, quarter: Optional[int] = None, user_id: Optional[int] = None):
     user = get_current_user(authorization)
-    messages = get_chat_history(user['id'], year, quarter)
+    target_id = user['id']
+    all_messages = False
+    # Providers can view patient chat history (all quarters)
+    if user_id and user.get('role') == 'provider':
+        target_id = user_id
+        all_messages = True
+    if all_messages:
+        from auth import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute('''SELECT role, text, sources, timing, created_at FROM chat_messages
+            WHERE user_id = ? ORDER BY created_at ASC''', (target_id,))
+        rows = cursor.fetchall()
+        conn.close()
+        import json as jlib
+        msgs = []
+        for row in rows:
+            msg = {"type": row['role'], "text": row['text'], "timing": row['timing'], "created_at": row['created_at']}
+            if row['sources']:
+                try: msg['sources'] = jlib.loads(row['sources'])
+                except: msg['sources'] = []
+            else: msg['sources'] = []
+            msgs.append(msg)
+        return {"messages": msgs}
+    messages = get_chat_history(target_id, year, quarter)
     cy, cq = get_current_quarter()
     return {"messages": messages, "current_quarter": {"year": cy, "quarter": cq},
             "viewing": {"year": year or cy, "quarter": quarter or cq}}

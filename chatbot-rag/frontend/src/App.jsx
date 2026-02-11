@@ -168,6 +168,7 @@ export default function App() {
   const [mobileView, setMobileView] = useState('sidebar'); // 'sidebar' | 'content'
   const [showMobileGraph, setShowMobileGraph] = useState(false);
   const graphCanvasRef = useRef(null);
+  const mobileGraphCanvasRef = useRef(null);
 
   // Forgot Password
   const [forgotEmail, setForgotEmail] = useState('');
@@ -790,11 +791,15 @@ export default function App() {
 
   // Draw force-directed graph on canvas
   useEffect(() => {
-    if (!knowledgeGraph || !graphCanvasRef.current) return;
-    const canvas = graphCanvasRef.current;
-    const ctx = canvas.getContext('2d');
-    const W = canvas.width = canvas.parentElement?.offsetWidth || 300;
-    const H = canvas.height = canvas.parentElement?.offsetHeight || 260;
+    if (!knowledgeGraph) return;
+    const canvases = [graphCanvasRef.current, mobileGraphCanvasRef.current].filter(Boolean);
+    if (canvases.length === 0) return;
+
+    // Use the first available canvas for simulation sizing
+    const primary = canvases[0];
+    const W = primary.width = primary.parentElement?.offsetWidth || 300;
+    const H = primary.height = primary.parentElement?.offsetHeight || 260;
+    canvases.forEach(c => { c.width = c.parentElement?.offsetWidth || W; c.height = c.parentElement?.offsetHeight || H; });
 
     const nodes = knowledgeGraph.nodes.map((n, i) => ({
       ...n,
@@ -808,6 +813,39 @@ export default function App() {
 
     // Center node stays centered
     if (nodeMap['patient']) { nodeMap['patient'].x = W / 2; nodeMap['patient'].y = H / 2; }
+
+    const drawOnCanvas = (canvas) => {
+      const cW = canvas.width, cH = canvas.height;
+      const scaleX = cW / W, scaleY = cH / H;
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, cW, cH);
+      // Edges
+      for (const e of edges) {
+        const src = nodeMap[e.source], tgt = nodeMap[e.target];
+        if (!src || !tgt) continue;
+        ctx.beginPath();
+        ctx.moveTo(src.x * scaleX, src.y * scaleY);
+        ctx.lineTo(tgt.x * scaleX, tgt.y * scaleY);
+        ctx.strokeStyle = e.type === 'primary' ? 'rgba(99,102,241,0.3)' : 'rgba(161,161,170,0.15)';
+        ctx.lineWidth = Math.min(e.weight || 1, 4);
+        ctx.stroke();
+      }
+      // Nodes
+      for (const n of nodes) {
+        ctx.beginPath();
+        ctx.arc(n.x * scaleX, n.y * scaleY, n.size / 2, 0, Math.PI * 2);
+        ctx.fillStyle = n.color || '#6366f1';
+        ctx.fill();
+        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        // Label
+        ctx.font = `${n.type === 'center' ? 'bold 11px' : '10px'} system-ui`;
+        ctx.fillStyle = '#e4e4e7';
+        ctx.textAlign = 'center';
+        ctx.fillText(n.label, n.x * scaleX, n.y * scaleY + n.size / 2 + 14);
+      }
+    };
 
     let frame;
     const tick = () => {
@@ -846,41 +884,15 @@ export default function App() {
         n.y = Math.max(30, Math.min(H - 30, n.y));
       }
 
-      // Draw
-      ctx.clearRect(0, 0, W, H);
-      // Edges
-      for (const e of edges) {
-        const src = nodeMap[e.source], tgt = nodeMap[e.target];
-        if (!src || !tgt) continue;
-        ctx.beginPath();
-        ctx.moveTo(src.x, src.y);
-        ctx.lineTo(tgt.x, tgt.y);
-        ctx.strokeStyle = e.type === 'primary' ? 'rgba(99,102,241,0.3)' : 'rgba(161,161,170,0.15)';
-        ctx.lineWidth = Math.min(e.weight || 1, 4);
-        ctx.stroke();
-      }
-      // Nodes
-      for (const n of nodes) {
-        ctx.beginPath();
-        ctx.arc(n.x, n.y, n.size / 2, 0, Math.PI * 2);
-        ctx.fillStyle = n.color || '#6366f1';
-        ctx.fill();
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-        ctx.lineWidth = 1;
-        ctx.stroke();
-        // Label
-        ctx.font = `${n.type === 'center' ? 'bold 11px' : '10px'} system-ui`;
-        ctx.fillStyle = '#e4e4e7';
-        ctx.textAlign = 'center';
-        ctx.fillText(n.label, n.x, n.y + n.size / 2 + 14);
-      }
+      // Draw on all available canvases
+      canvases.forEach(c => { if (c) drawOnCanvas(c); });
       frame = requestAnimationFrame(tick);
     };
     tick();
     // Stop after 3 seconds
     const timer = setTimeout(() => cancelAnimationFrame(frame), 3000);
     return () => { cancelAnimationFrame(frame); clearTimeout(timer); };
-  }, [knowledgeGraph]);
+  }, [knowledgeGraph, showMobileGraph]);
 
   // Forgot Password
   const handleForgotPassword = async () => {
@@ -1924,6 +1936,10 @@ export default function App() {
                             </div>
                           ) : (
                             <div className="px-4 pb-3 space-y-2">
+                              {/* Mobile Canvas */}
+                              <div className="relative" style={{ height: '200px' }}>
+                                <canvas ref={mobileGraphCanvasRef} className="w-full h-full" />
+                              </div>
                               {/* Legend */}
                               <div className="flex flex-wrap gap-x-4 gap-y-1">
                                 <div className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500" /><span className="text-[9px] text-zinc-500">Risk</span></div>

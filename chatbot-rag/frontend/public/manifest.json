@@ -1,0 +1,27 @@
+{
+  "name": "Teen Zen - Mental Health Support",
+  "short_name": "Teen Zen",
+  "description": "AI-powered mental health chatbot with provider dashboard",
+  "start_url": "/teen.zen/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#4f46e5",
+  "orientation": "any",
+  "scope": "/teen.zen/",
+  "icons": [
+    {
+      "src": "icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["health", "medical"],
+  "lang": "en-US"
+}

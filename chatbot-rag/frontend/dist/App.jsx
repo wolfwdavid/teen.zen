@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Check, X, Clock, Bot, User, Send, StopCircle, MessageSquare,
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
@@ -127,7 +127,6 @@ export default function App() {
 
   // Profile & Tasks
   const [tasks, setTasks] = useState([]);
-  const [myProvider, setMyProvider] = useState(null);
   const [tasksLoading, setTasksLoading] = useState(false);
   const [usersList, setUsersList] = useState([]);
   const [newTask, setNewTask] = useState({ title: '', description: '', assigned_to: '', due_date: '' });
@@ -437,12 +436,6 @@ export default function App() {
       if (currentUser?.role === 'provider') {
         loadUsers();
         loadProviderPatients();
-      } else if (currentUser?.role === 'user') {
-        // Load provider info for patients
-        fetch(joinUrl(API_BASE, '/api/my-provider'), { headers: authHeaders(authToken) })
-          .then(r => r.ok ? r.json() : null)
-          .then(d => { if (d) setMyProvider(d.provider); })
-          .catch(() => {});
       }
     }
   }, [view, authToken, currentUser]);
@@ -2156,29 +2149,6 @@ export default function App() {
                     </span>
                   </div>
                 </div>
-
-                {/* Provider Info */}
-                {myProvider && (
-                  <div className="mt-6 pt-5 border-t border-zinc-800/50">
-                    <p className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 mb-3">Your Therapist</p>
-                    <div className="flex items-center gap-3 rounded-xl bg-zinc-950/50 p-3 border border-zinc-800/50">
-                      {myProvider.profile_pic ? (
-                        <img src={myProvider.profile_pic} alt="" className="h-10 w-10 rounded-full object-cover ring-1 ring-amber-500/30" />
-                      ) : (
-                        <div className="flex h-10 w-10 items-center justify-center rounded-full bg-amber-600/20 text-amber-400 text-sm font-bold ring-1 ring-amber-500/30">
-                          {capitalize(myProvider.username).charAt(0)}
-                        </div>
-                      )}
-                      <div>
-                        <p className="text-sm font-semibold text-zinc-200">{capitalize(myProvider.username)}</p>
-                        <p className="text-xs text-zinc-500">{myProvider.email}</p>
-                      </div>
-                      <span className="ml-auto rounded-full bg-amber-500/10 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-400 ring-1 ring-amber-500/20">
-                        Provider
-                      </span>
-                    </div>
-                  </div>
-                )}
               </div>
 
               {/* ===== MY DAILY TASKS (Dashboard) ===== */}

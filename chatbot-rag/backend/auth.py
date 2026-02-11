@@ -396,6 +396,24 @@ def get_provider_for_user(user_id: int):
     return row['provider_id'] if row else None
 
 
+def get_provider_info_for_user(user_id: int):
+    """Get the provider's name/email for a given patient"""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('''
+        SELECT u.id, u.username, u.email, u.profile_pic
+        FROM provider_patients pp
+        JOIN users u ON u.id = pp.provider_id
+        WHERE pp.user_id = ?
+        LIMIT 1
+    ''', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        return {'id': row['id'], 'username': row['username'], 'email': row['email'], 'profile_pic': row['profile_pic']}
+    return None
+
+
 # ========== PROVIDER-PATIENT MANAGEMENT ==========
 
 def auto_assign_patient(user_id: int):

@@ -30,6 +30,8 @@ from auth import (
     extract_knowledge_graph,
     # Profile picture
     save_profile_pic, get_profile_pic,
+    # Provider info for users
+    get_provider_info_for_user,
     ACCESS_TOKEN_EXPIRE_MINUTES, get_user_by_email,
     MAX_PATIENTS_PER_PROVIDER
 )
@@ -315,6 +317,15 @@ async def delete_profile_pic(authorization: str = Header(None)):
     user = get_current_user(authorization)
     save_profile_pic(user['id'], None)
     return {"success": True}
+
+
+@app.get("/api/my-provider")
+async def get_my_provider(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    provider = get_provider_info_for_user(user['id'])
+    if provider:
+        return {"provider": provider}
+    return {"provider": None}
 
 
 # --- CHAT HISTORY ---

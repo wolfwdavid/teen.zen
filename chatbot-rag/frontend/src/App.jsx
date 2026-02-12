@@ -99,9 +99,22 @@ export default function App() {
   const [viewingQuarter, setViewingQuarter] = useState(null);
   const [availableQuarters, setAvailableQuarters] = useState([]);
   const [backend, setBackend] = useState({ status: "checking", detail: "" });
-  const [currentUser, setCurrentUser] = useState(null);
-  const [authToken, setAuthToken] = useState(null);
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { const u = localStorage.getItem('tz_user'); return u ? JSON.parse(u) : null; } catch { return null; }
+  });
+  const [authToken, setAuthToken] = useState(() => {
+    try { return localStorage.getItem('tz_token') || null; } catch { return null; }
+  });
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [guestPrompts, setGuestPrompts] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem('tz_guest') || '{}');
+      const today = new Date().toISOString().slice(0, 10);
+      return stored.date === today ? stored.count : 0;
+    } catch { return 0; }
+  });
+  const [showGuestModal, setShowGuestModal] = useState(false);
+  const GUEST_LIMIT = 25;
 
   // Registration
   const [showPassword, setShowPassword] = useState(false);
@@ -169,6 +182,13 @@ export default function App() {
   const [showMobileGraph, setShowMobileGraph] = useState(false);
   const graphCanvasRef = useRef(null);
   const mobileGraphCanvasRef = useRef(null);
+
+  // Provider floating chat widget
+  const [providerChatOpen, setProviderChatOpen] = useState(false);
+  const [providerChatMessages, setProviderChatMessages] = useState([]);
+  const [providerChatInput, setProviderChatInput] = useState('');
+  const [providerChatLoading, setProviderChatLoading] = useState(false);
+  const providerChatRef = useRef(null);
 
   // Forgot Password
   const [forgotEmail, setForgotEmail] = useState('');
@@ -594,7 +614,18 @@ export default function App() {
     setMessages([]);
     setTasks([]);
     setView('login');
+    try { localStorage.removeItem('tz_token'); localStorage.removeItem('tz_user'); } catch {}
   };
+
+  // Persist auth to localStorage
+  useEffect(() => {
+    try {
+      if (authToken && currentUser) {
+        localStorage.setItem('tz_token', authToken);
+        localStorage.setItem('tz_user', JSON.stringify(currentUser));
+      }
+    } catch {}
+  }, [authToken, currentUser]);
 
   // --- PASSWORD GENERATOR ---
   const generateStrongPassword = () => {
@@ -1045,6 +1076,18 @@ export default function App() {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    // Guest limit check
+    if (!authToken) {
+      if (guestPrompts >= GUEST_LIMIT) {
+        setShowGuestModal(true);
+        return;
+      }
+      const today = new Date().toISOString().slice(0, 10);
+      const newCount = guestPrompts + 1;
+      setGuestPrompts(newCount);
+      try { localStorage.setItem('tz_guest', JSON.stringify({ date: today, count: newCount })); } catch {}
+    }
+
     const userQuery = input.trim();
     setInput("");
     setIsLoading(true);
@@ -1107,6 +1150,62 @@ export default function App() {
   };
 
   // --- NAV HELPER ---
+  // --- PROVIDER FLOATING CHAT ---
+  const handleProviderChat = async (e) => {
+    e.preventDefault();
+    if (!providerChatInput.trim() || providerChatLoading) return;
+    const q = providerChatInput.trim();
+    setProviderChatInput('');
+    setProviderChatLoading(true);
+    setProviderChatMessages(prev => [...prev, { type: 'user', text: q }]);
+
+    try {
+      // Build context-aware API URL
+      let apiUrl;
+      if (selectedPatient) {
+        apiUrl = joinUrl(API_BASE, "/api/chat/provider-stream") +
+          `?question=${encodeURIComponent(q)}&patient_id=${selectedPatient.id}`;
+      } else {
+        apiUrl = joinUrl(API_BASE, "/api/chat/stream") +
+          `?question=${encodeURIComponent(q)}`;
+      }
+      const response = await fetch(apiUrl, { headers: authToken ? authHeaders(authToken) : { 'ngrok-skip-browser-warning': 'true' } });
+      if (!response.ok) throw new Error('Stream error');
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = '', botText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n\n");
+        buffer = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.startsWith("data:")) continue;
+          try {
+            const data = JSON.parse(line.replace(/^data:\s*/, "").trim());
+            if (data.type === "token") botText += (data.text ?? "");
+            else if (data.type === "done") break;
+          } catch {}
+        }
+        setProviderChatMessages(prev => {
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last?.type === 'bot') { next[next.length - 1] = { ...last, text: botText }; }
+          else { next.push({ type: 'bot', text: botText }); }
+          return next;
+        });
+      }
+      if (!botText) setProviderChatMessages(prev => [...prev, { type: 'bot', text: 'No response received.' }]);
+    } catch (err) {
+      setProviderChatMessages(prev => [...prev, { type: 'bot', text: `Error: ${err.message}` }]);
+    }
+    setProviderChatLoading(false);
+    setTimeout(() => providerChatRef.current?.scrollTo(0, providerChatRef.current.scrollHeight), 100);
+  };
+
   const navTo = (v) => { setView(v); setMobileMenuOpen(false); };
 
   return (
@@ -3020,6 +3119,153 @@ export default function App() {
           </div>
         )}
       </main>
+
+      {/* ===== GUEST LIMIT MODAL ===== */}
+      {showGuestModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-zinc-900 border border-zinc-800 p-6 shadow-2xl">
+            <div className="text-center mb-4">
+              <div className="h-14 w-14 rounded-full bg-indigo-600/20 flex items-center justify-center mx-auto mb-3">
+                <MessageSquare size={24} className="text-indigo-400" />
+              </div>
+              <h3 className="text-lg font-bold text-white">Daily Limit Reached</h3>
+              <p className="text-sm text-zinc-400 mt-2">
+                You've used all {GUEST_LIMIT} free messages for today. Create an account to get unlimited access!
+              </p>
+            </div>
+            <div className="space-y-2 mt-5">
+              <button onClick={() => { setShowGuestModal(false); setView('register'); }}
+                className="w-full rounded-xl bg-indigo-600 py-3 text-sm font-bold text-white hover:bg-indigo-500 transition-colors">
+                Create Free Account
+              </button>
+              <button onClick={() => { setShowGuestModal(false); setView('login'); }}
+                className="w-full rounded-xl bg-zinc-800 py-3 text-sm font-bold text-zinc-300 hover:bg-zinc-700 transition-colors">
+                Sign In
+              </button>
+              <button onClick={() => setShowGuestModal(false)}
+                className="w-full py-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors">
+                Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== GUEST PROMPT COUNTER (shown when not logged in, in chat view) ===== */}
+      {!authToken && view === 'chat' && (
+        <div className="fixed bottom-4 left-4 z-40 rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 backdrop-blur-sm shadow-lg">
+          <p className="text-[11px] text-zinc-400">
+            <span className={`font-bold ${guestPrompts >= GUEST_LIMIT - 5 ? 'text-amber-400' : 'text-indigo-400'}`}>
+              {GUEST_LIMIT - guestPrompts}
+            </span> free messages left today
+            {guestPrompts >= 10 && (
+              <button onClick={() => setView('register')} className="ml-2 text-indigo-400 hover:text-indigo-300 font-bold underline">
+                Sign up
+              </button>
+            )}
+          </p>
+        </div>
+      )}
+
+      {/* ===== FLOATING PROVIDER CHAT WIDGET ===== */}
+      {currentUser?.role === 'provider' && view === 'profile' && (
+        <>
+          {/* Chat bubble button */}
+          {!providerChatOpen && (
+            <button onClick={() => setProviderChatOpen(true)}
+              className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-500/30 hover:bg-indigo-500 transition-all flex items-center justify-center hover:scale-110 active:scale-95">
+              <MessageSquare size={24} />
+            </button>
+          )}
+
+          {/* Chat window */}
+          {providerChatOpen && (
+            <div className="fixed bottom-6 right-6 z-50 w-[380px] max-w-[calc(100vw-2rem)] h-[500px] max-h-[calc(100vh-6rem)] flex flex-col rounded-2xl bg-zinc-950 border border-zinc-800 shadow-2xl overflow-hidden">
+              {/* Header */}
+              <div className="flex items-center justify-between px-4 py-3 border-b border-zinc-800 bg-zinc-900/50 shrink-0">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-full bg-indigo-600 flex items-center justify-center">
+                    <Bot size={16} className="text-white" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-bold text-white">Teen Zen Assistant</p>
+                    <p className="text-[10px] text-zinc-500">
+                      {selectedPatient ? `Context: ${capitalize(selectedPatient.username)}` : 'General assistant'}
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1">
+                  <button onClick={() => { setProviderChatMessages([]); }}
+                    className="text-zinc-500 hover:text-zinc-300 p-1 transition-colors" title="Clear chat">
+                    <Trash2 size={14} />
+                  </button>
+                  <button onClick={() => setProviderChatOpen(false)}
+                    className="text-zinc-500 hover:text-zinc-300 p-1 transition-colors">
+                    <X size={16} />
+                  </button>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div ref={providerChatRef} className="flex-1 overflow-y-auto p-4 space-y-3 min-h-0">
+                {providerChatMessages.length === 0 && (
+                  <div className="text-center py-8">
+                    <Bot size={32} className="mx-auto text-zinc-700 mb-2" />
+                    <p className="text-xs text-zinc-500">Ask me anything about mental health, therapy techniques, or patient care.</p>
+                    {selectedPatient && (
+                      <p className="text-[10px] text-indigo-400 mt-2">Patient context: {capitalize(selectedPatient.username)}</p>
+                    )}
+                  </div>
+                )}
+                {providerChatMessages.map((msg, i) => (
+                  <div key={i} className={`flex gap-2 ${msg.type === 'user' ? 'justify-end' : 'justify-start'}`}>
+                    {msg.type === 'bot' && (
+                      <div className="h-6 w-6 rounded-full bg-indigo-600/20 flex items-center justify-center shrink-0 mt-1">
+                        <Bot size={12} className="text-indigo-400" />
+                      </div>
+                    )}
+                    <div className={`max-w-[80%] rounded-xl px-3 py-2 text-sm leading-relaxed ${
+                      msg.type === 'user'
+                        ? 'bg-indigo-600 text-white'
+                        : 'bg-zinc-900 text-zinc-300 border border-zinc-800'
+                    }`}>
+                      <p className="whitespace-pre-wrap">{msg.text}</p>
+                    </div>
+                  </div>
+                ))}
+                {providerChatLoading && (
+                  <div className="flex gap-2">
+                    <div className="h-6 w-6 rounded-full bg-indigo-600/20 flex items-center justify-center shrink-0">
+                      <Loader2 size={12} className="animate-spin text-indigo-400" />
+                    </div>
+                    <div className="bg-zinc-900 rounded-xl px-3 py-2 border border-zinc-800">
+                      <div className="flex gap-1">
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce" style={{animationDelay:'0ms'}} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce" style={{animationDelay:'150ms'}} />
+                        <span className="w-1.5 h-1.5 rounded-full bg-zinc-600 animate-bounce" style={{animationDelay:'300ms'}} />
+                      </div>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Input */}
+              <form onSubmit={handleProviderChat} className="px-3 py-2 border-t border-zinc-800 bg-zinc-900/50 shrink-0">
+                <div className="flex items-center gap-2">
+                  <input value={providerChatInput} onChange={(e) => setProviderChatInput(e.target.value)}
+                    className="flex-1 bg-zinc-950 rounded-lg px-3 py-2 text-sm text-zinc-200 border border-zinc-800 outline-none focus:border-indigo-500/50 placeholder:text-zinc-600 transition-colors"
+                    placeholder={selectedPatient ? `Ask about ${capitalize(selectedPatient.username)}...` : 'Ask anything...'}
+                    disabled={providerChatLoading} />
+                  <button type="submit" disabled={providerChatLoading || !providerChatInput.trim()}
+                    className="h-9 w-9 rounded-lg bg-indigo-600 hover:bg-indigo-500 disabled:bg-zinc-800 disabled:text-zinc-600 text-white flex items-center justify-center transition-colors shrink-0">
+                    <Send size={14} />
+                  </button>
+                </div>
+              </form>
+            </div>
+          )}
+        </>
+      )}
     </div>
   );
 }

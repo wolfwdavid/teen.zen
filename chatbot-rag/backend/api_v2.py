@@ -588,3 +588,67 @@ async def chat_stream(question: str = Query(...)):
             logger.error(f"💥 [Stream] Error: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+@app.get('/api/chat/provider-stream')
+async def provider_chat_stream(question: str = Query(...), patient_id: Optional[int] = None, authorization: str = Header(None)):
+    """Provider-aware chat that includes patient context"""
+    user = get_current_user(authorization)
+    require_provider(user)
+
+    # Build context from patient data if specified
+    context_parts = []
+    if patient_id:
+        from auth import get_db_connection
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        # Get patient info
+        cursor.execute('SELECT username, email, age FROM users WHERE id = ?', (patient_id,))
+        patient = cursor.fetchone()
+        if patient:
+            context_parts.append(f"Patient: {patient['username']}, age {patient['age'] or 'unknown'}")
+
+        # Get recent chat messages for context
+        cursor.execute('''SELECT role, text FROM chat_messages WHERE user_id = ?
+            ORDER BY created_at DESC LIMIT 20''', (patient_id,))
+        recent = cursor.fetchall()
+        if recent:
+            chat_summary = "; ".join([f"{'Patient' if r['role']=='user' else 'Bot'}: {r['text'][:100]}" for r in reversed(recent)])
+            context_parts.append(f"Recent conversations: {chat_summary}")
+
+        # Get clinical intake if available
+        cursor.execute('SELECT intake_data FROM clinical_intake WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (patient_id,))
+        intake = cursor.fetchone()
+        if intake:
+            try:
+                intake_data = json.loads(intake['intake_data'])
+                if intake_data.get('presenting_concern'):
+                    context_parts.append(f"Presenting concern: {intake_data['presenting_concern']}")
+            except: pass
+
+        # Get knowledge graph topics
+        graph = extract_knowledge_graph(patient_id)
+        if graph.get('stats', {}).get('top_topics'):
+            topics = [t[0] for t in graph['stats']['top_topics'][:5]]
+            context_parts.append(f"Key topics discussed: {', '.join(topics)}")
+
+        conn.close()
+
+    enhanced_question = question
+    if context_parts:
+        context = " | ".join(context_parts)
+        enhanced_question = f"[You are a clinical assistant helping a therapist. {context}] {question}"
+
+    async def event_generator():
+        try:
+            logger.info(f"🔍 [Provider Stream] Q: {question} | Patient: {patient_id}")
+            if chain_v2.rag_chain is None:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
+                return
+            answer = chain_v2.rag_chain.invoke(enhanced_question)
+            yield f"data: {json.dumps({'type': 'token', 'text': str(answer)})}\n\n"
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        except Exception as e:
+            logger.error(f"💥 [Provider Stream] Error: {str(e)}", exc_info=True)
+            yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+    return StreamingResponse(event_generator(), media_type="text/event-stream")

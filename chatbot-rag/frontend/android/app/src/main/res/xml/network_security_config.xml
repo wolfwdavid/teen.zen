@@ -1,14 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <network-security-config>
-
-    <!-- Allow cleartext HTTP to Android emulator host -->
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
     <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">10.0.2.2</domain>
+        <domain includeSubdomains="true">10.0.2.2</domain>
+        <domain includeSubdomains="true">10.20.50.249</domain>
+        <domain includeSubdomains="true">localhost</domain>
+        <domain includeSubdomains="true">ngrok-free.dev</domain>
     </domain-config>
-
-    <!-- Optional: allow localhost for emulator Chrome / dev tools -->
-    <domain-config cleartextTrafficPermitted="true">
-        <domain includeSubdomains="false">localhost</domain>
-    </domain-config>
-
 </network-security-config>

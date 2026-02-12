@@ -581,8 +581,10 @@ async def chat_stream(question: str = Query(...)):
             if chain_v2.rag_chain is None:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
-            answer = chain_v2.rag_chain.invoke(question)
-            yield f"data: {json.dumps({'type': 'token', 'text': str(answer)})}\n\n"
+            full_text = ""
+            for token in chain_v2.rag_chain.stream(question):
+                full_text += token
+                yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             logger.error(f"💥 [Stream] Error: {str(e)}", exc_info=True)
@@ -645,8 +647,8 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
             if chain_v2.rag_chain is None:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
-            answer = chain_v2.rag_chain.invoke(enhanced_question)
-            yield f"data: {json.dumps({'type': 'token', 'text': str(answer)})}\n\n"
+            for token in chain_v2.rag_chain.stream(enhanced_question):
+                yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         except Exception as e:
             logger.error(f"💥 [Provider Stream] Error: {str(e)}", exc_info=True)

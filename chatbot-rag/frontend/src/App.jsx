@@ -648,6 +648,10 @@ export default function App() {
     setRegForm({ ...regForm, password: suggestedPassword, confirmPassword: suggestedPassword });
   };
 
+  const useSuggestedPasswordReset = () => {
+    setForgotNewPassword(suggestedPassword);
+  };
+
   // --- Google Sign-In ---
   const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || "";
 
@@ -2996,6 +3000,17 @@ export default function App() {
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
                         {showPassword ? <EyeOff size={18} /> : <Eye size={18} />}
                       </button>
+                    </div>
+                    <div className="flex items-center gap-2 mt-1.5 ml-1">
+                      <button type="button" onClick={generateStrongPassword} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
+                        Generate strong password
+                      </button>
+                      {suggestedPassword && (
+                        <div className="flex items-center gap-2">
+                          <code className="text-[10px] text-emerald-500/80 font-mono bg-zinc-900 px-2 py-0.5 rounded">{suggestedPassword}</code>
+                          <button type="button" onClick={useSuggestedPasswordReset} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors">Use</button>
+                        </div>
+                      )}
                     </div>
                   </div>
                   {forgotError && (

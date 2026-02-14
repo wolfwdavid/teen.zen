@@ -630,18 +630,29 @@ def get_current_time_response():
 
 def get_weather_response(location="New York"):
     try:
-        import subprocess
-        result = subprocess.run(
-            ['curl', '-s', f'https://wttr.in/{location}?format=%C+%t+%h+%w'],
-            capture_output=True, text=True, timeout=8
-        )
-        data = result.stdout.strip()
-        if data and 'Unknown' not in data and len(data) < 200:
-            return f"Current weather in {location}: {data}. Weather can definitely affect mood - sunny days tend to boost energy while grey or rainy days can feel heavy. How are you feeling today?"
-        else:
-            return "I wasn't able to check the current weather right now, but I know weather can affect mood. How are you feeling today?"
-    except:
-        return "I wasn't able to check the current weather right now, but I know weather can affect mood. How are you feeling today?"
+        import urllib.request, json as _json
+        # Use Open-Meteo (free, no key) - NYC coords by default
+        coords = {"New York": (40.71, -74.01), "London": (51.51, -0.13), "Los Angeles": (34.05, -118.24)}
+        lat, lon = coords.get(location, (40.71, -74.01))
+        url = f"https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&current=temperature_2m,relative_humidity_2m,weather_code,wind_speed_10m&temperature_unit=fahrenheit&wind_speed_unit=mph"
+        req = urllib.request.Request(url)
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read().decode())
+        current = data.get("current", {})
+        temp = current.get("temperature_2m", "?")
+        humidity = current.get("relative_humidity_2m", "?")
+        wind = current.get("wind_speed_10m", "?")
+        code = current.get("weather_code", 0)
+        # WMO weather codes to descriptions
+        wmo = {0: "Clear sky", 1: "Mainly clear", 2: "Partly cloudy", 3: "Overcast",
+               45: "Foggy", 48: "Depositing rime fog", 51: "Light drizzle", 53: "Moderate drizzle",
+               55: "Dense drizzle", 61: "Slight rain", 63: "Moderate rain", 65: "Heavy rain",
+               71: "Slight snow", 73: "Moderate snow", 75: "Heavy snow", 80: "Slight rain showers",
+               81: "Moderate rain showers", 82: "Violent rain showers", 95: "Thunderstorm"}
+        desc = wmo.get(code, "Unknown")
+        return f"Current weather in {location}: {desc}, {temp}°F, humidity {humidity}%, wind {wind} mph. Weather can definitely affect mood - sunny days tend to boost energy while grey or rainy days can feel heavy. How are you feeling today?"
+    except Exception as e:
+        return f"I wasn\'t able to check the current weather right now, but I know weather can affect mood. How are you feeling today?"
 
 # --- HEALTH & CHAT ---
 @app.get('/health')

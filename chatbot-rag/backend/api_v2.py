@@ -722,6 +722,26 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
         if graph.get('stats', {}).get('top_topics'):
             topics = [t[0] for t in graph['stats']['top_topics'][:5]]
             context_parts.append("Key topics discussed: " + ", ".join(topics))
+        # Get user profile data (name, DOB, parents, emergency contact)
+        try:
+            cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = ?', (patient_id,))
+            profile_row = cursor.fetchone()
+            if profile_row:
+                try:
+                    pd = json.loads(profile_row['profile_data'])
+                    profile_parts = []
+                    if pd.get('fullName'): profile_parts.append('Full name: ' + pd['fullName'])
+                    if pd.get('preferredName'): profile_parts.append('Goes by: ' + pd['preferredName'])
+                    if pd.get('pronouns'): profile_parts.append('Pronouns: ' + pd['pronouns'])
+                    if pd.get('dob'): profile_parts.append('Date of birth: ' + pd['dob'])
+                    if pd.get('contactPhone'): profile_parts.append('Phone: ' + pd['contactPhone'])
+                    if pd.get('parent1FullName'): profile_parts.append('Parent/Guardian 1: ' + pd['parent1FullName'] + (' (' + pd.get('parent1EmergencyRelation','') + ')' if pd.get('parent1EmergencyRelation') else ''))
+                    if pd.get('parent2FullName'): profile_parts.append('Parent/Guardian 2: ' + pd['parent2FullName'] + (' (' + pd.get('parent2EmergencyRelation','') + ')' if pd.get('parent2EmergencyRelation') else ''))
+                    if pd.get('emergencyName'): profile_parts.append('Emergency contact: ' + pd['emergencyName'])
+                    if profile_parts:
+                        context_parts.append('Profile Details: ' + ', '.join(profile_parts))
+                except: pass
+        except: pass
         conn.close()
 
     enhanced_question = question

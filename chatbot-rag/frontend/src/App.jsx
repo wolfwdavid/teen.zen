@@ -93,6 +93,9 @@ export default function App() {
   const [view, setView] = useState('chat');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
+  const [uploadedFile, setUploadedFile] = useState(null);
+  const [uploadedFileText, setUploadedFileText] = useState("");
+  const fileInputRef = useRef(null);
   const [isLoading, setIsLoading] = useState(false);
   const [streamError, setStreamError] = useState(null);
   const [currentQuarter, setCurrentQuarter] = useState(null);
@@ -1089,6 +1092,24 @@ export default function App() {
   );
 
   // --- CHAT ---
+  const handleFileUpload = async (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    setUploadedFile(file);
+    try {
+      if (file.type === "text/plain" || file.name.endsWith(".txt") || file.name.endsWith(".md") || file.name.endsWith(".csv")) {
+        const text = await file.text();
+        setUploadedFileText(text.slice(0, 3000));
+      } else if (file.type === "application/json" || file.name.endsWith(".json")) {
+        const text = await file.text();
+        setUploadedFileText(text.slice(0, 3000));
+      } else {
+        setUploadedFileText("[File: " + file.name + " (" + (file.size / 1024).toFixed(1) + " KB) - binary file, content not readable]");
+      }
+    } catch { setUploadedFileText("[Could not read file]"); }
+    e.target.value = "";
+  };
+
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -1105,8 +1126,13 @@ export default function App() {
       try { localStorage.setItem('tz_guest', JSON.stringify({ date: today, count: newCount })); } catch {}
     }
 
-    const userQuery = input.trim();
+    let userQuery = input.trim();
+    if (uploadedFileText) {
+      userQuery = userQuery + "\n\n[Attached file: " + (uploadedFile?.name || "file") + "]\n" + uploadedFileText;
+    }
     setInput("");
+    setUploadedFile(null);
+    setUploadedFileText("");
     setIsLoading(true);
     setStreamError(null);
 
@@ -1390,7 +1416,24 @@ export default function App() {
             <div className="bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent pt-10 pb-6 shrink-0">
               <div className="mx-auto max-w-3xl px-4">
                 <form onSubmit={handleSendMessage} className="relative flex items-center rounded-2xl border border-zinc-800 bg-zinc-900/50 p-1.5 shadow-2xl focus-within:border-indigo-500/50 transition-all ring-1 ring-white/5">
-                  <input type="text" value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading}
+                  <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.py,.js,.html,.css" />
+                  <button type="button" onClick={() => fileInputRef.current?.click()} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors" title="Upload file">
+                    <Paperclip size={18} />
+                  </button>
+                  <div className="flex-1 flex flex-col">
+                    {uploadedFile && (
+                      <div className="flex items-center gap-2 px-4 pt-2 pb-1">
+                        <span className="text-[10px] text-indigo-400 bg-indigo-500/10 px-2 py-0.5 rounded-full">{uploadedFile.name}</span>
+                        <button type="button" onClick={() => { setUploadedFile(null); setUploadedFileText(""); }} className="text-zinc-500 hover:text-red-400"><X size={12} /></button>
+                      </div>
+                    )}
+                    <textarea value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim()) { handleSendMessage(e); } } }}
+                      placeholder={isLoading ? "Generating response..." : "Ask a question about your docs..."}
+                      rows={1}
+                      onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
+                      className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600 resize-none overflow-y-auto max-h-[150px]" />
+                  </div>
                     placeholder={isLoading ? "Generating response..." : "Ask a question about your docs..."}
                     className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600" />
                   <div className="flex items-center gap-1">

@@ -3,10 +3,11 @@ import logging
 import json
 import chain_v2
 from typing import Optional
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, timezone
 from fastapi import FastAPI, HTTPException, Query, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse
+import urllib.request
 from pydantic import BaseModel, EmailStr, validator
 from auth import (
     create_user, authenticate_user, verify_email_token, verify_email_pin,
@@ -635,6 +636,19 @@ async def chat_stream(question: str = Query(...)):
             if chain_v2.rag_chain is None:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
+
+            # Intercept time/weather questions
+            if detect_time_question(question):
+                answer = get_current_time_response()
+                yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+            if detect_weather_question(question):
+                answer = get_weather_response()
+                yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             full_text = ""
             for token in chain_v2.rag_chain.stream(question):
                 full_text += token
@@ -772,6 +786,19 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
             if chain_v2.rag_chain is None:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
+
+            # Intercept time/weather questions for provider too
+            if detect_time_question(question):
+                answer = get_current_time_response()
+                yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+            if detect_weather_question(question):
+                answer = get_weather_response()
+                yield f"data: {json.dumps({'type': 'token', 'text': answer})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
             for token in chain_v2.rag_chain.stream(enhanced_question):
                 yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"

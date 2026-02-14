@@ -316,6 +316,60 @@ async def upload_profile_pic(request: Request, authorization: str = Header(None)
 async def delete_profile_pic(authorization: str = Header(None)):
     user = get_current_user(authorization)
     save_profile_pic(user['id'], None)
+
+# --- USER PROFILE DATA (synced from client) ---
+@app.post("/api/profile/data")
+async def save_profile_data(request: Request, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    body = await request.json()
+    profile_data = body.get('profile_data', {})
+    from auth import get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    data_json = json.dumps(profile_data)
+    now = datetime.utcnow().isoformat()
+    cursor.execute("""
+        INSERT INTO user_profile_data (user_id, profile_data, updated_at)
+        VALUES (?, ?, ?)
+        ON CONFLICT(user_id)
+        DO UPDATE SET profile_data = ?, updated_at = ?
+    """, (user['id'], data_json, now, data_json, now))
+    conn.commit()
+    conn.close()
+    return {"success": True}
+
+@app.get("/api/profile/data")
+async def get_profile_data(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    from auth import get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = ?', (user['id'],))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            return {"data": json.loads(row['profile_data'])}
+        except:
+            return {"data": {}}
+    return {"data": {}}
+
+@app.get("/api/provider/patients/{user_id}/profile-data")
+async def get_patient_profile_data(user_id: int, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    require_provider(user)
+    from auth import get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = ?', (user_id,))
+    row = cursor.fetchone()
+    conn.close()
+    if row:
+        try:
+            return {"data": json.loads(row['profile_data'])}
+        except:
+            return {"data": {}}
+    return {"data": {}}
     return {"success": True}
 
 

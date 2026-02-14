@@ -165,6 +165,7 @@ export default function App() {
   const [providerPatients, setProviderPatients] = useState([]);
   const [selectedPatient, setSelectedPatient] = useState(null);
   const [patientIntake, setPatientIntake] = useState({});
+  const [patientProfileData, setPatientProfileData] = useState({});
   const [therapistObs, setTherapistObs] = useState({});
   const [openSections, setOpenSections] = useState(new Set(['presenting']));
   const [intakeSaved, setIntakeSaved] = useState(false);
@@ -405,9 +406,16 @@ export default function App() {
     } catch {}
   };
 
-  const saveProfileData = () => {
+  const saveProfileData = async () => {
     try {
       window.localStorage?.setItem(`profileData_${currentUser.id}`, JSON.stringify(profileData));
+      if (authToken) {
+        await fetch(joinUrl(API_BASE, '/api/profile/data'), {
+          method: 'POST',
+          headers: { ...authHeaders(authToken), 'Content-Type': 'application/json' },
+          body: JSON.stringify({ profile_data: profileData })
+        });
+      }
       setProfileSaved(true);
       setTimeout(() => setProfileSaved(false), 2000);
     } catch {}
@@ -769,6 +777,11 @@ export default function App() {
       const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patient.id}/intake`), { headers: authHeaders(authToken) });
       if (res.ok) { const d = await res.json(); setPatientIntake(d.data || {}); }
     } catch (e) { setPatientIntake({}); }
+    // Load patient profile data
+    try {
+      const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patient.id}/profile-data`), { headers: authHeaders(authToken) });
+      if (res.ok) { const d = await res.json(); setPatientProfileData(d.data || {}); }
+    } catch (e) { setPatientProfileData({}); }
     // Load observations
     try {
       const res = await fetch(joinUrl(API_BASE, `/api/provider/patients/${patient.id}/observations`), { headers: authHeaders(authToken) });

@@ -622,10 +622,10 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
             context_parts.append("Patient Profile: " + ", ".join(profile_info))
 
         # Get recent chat messages
-        cursor.execute('SELECT role, text, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 40', (patient_id,))
+        cursor.execute('SELECT role, text, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 10', (patient_id,))
         recent = cursor.fetchall()
         if recent:
-            chat_lines = [("Patient" if r['role']=='user' else "Bot") + ": " + r['text'][:200] for r in reversed(recent)]
+            chat_lines = [("Patient" if r['role']=='user' else "Bot") + ": " + r['text'][:80] for r in reversed(recent)]
             context_parts.append("Chat History:\n" + "\n".join(chat_lines))
 
         # Get clinical intake
@@ -687,6 +687,9 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
             "- You may also answer general knowledge questions to assist the therapist.\n"
             "- Be professional, concise, and clinically relevant.]\n\n"
         )
+        # Truncate context to fit model's 2048 token window (~1500 chars for context)
+        if len(context) > 1500:
+            context = context[:1500] + "..."
         enhanced_question = system_prefix + context + system_suffix + "Therapist question: " + question
 
     async def event_generator():

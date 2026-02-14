@@ -604,42 +604,90 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
         from auth import get_db_connection
         conn = get_db_connection()
         cursor = conn.cursor()
-        # Get patient info
-        cursor.execute('SELECT username, email, age FROM users WHERE id = ?', (patient_id,))
+        # Get patient info - pull ALL available fields
+        cursor.execute('SELECT username, email, age, phone, role, created_at, last_login FROM users WHERE id = ?', (patient_id,))
         patient = cursor.fetchone()
         if patient:
-            context_parts.append(f"Patient: {patient['username']}, age {patient['age'] or 'unknown'}")
+            profile_info = [f"Name: {patient['username']}"]
+            if patient['age']:
+                profile_info.append(f"Age: {patient['age']}")
+            if patient['email']:
+                profile_info.append(f"Email: {patient['email']}")
+            if patient['phone']:
+                profile_info.append(f"Phone: {patient['phone']}")
+            if patient['created_at']:
+                profile_info.append(f"Joined: {patient['created_at']}")
+            if patient['last_login']:
+                profile_info.append(f"Last active: {patient['last_login']}")
+            context_parts.append("Patient Profile: " + ", ".join(profile_info))
 
-        # Get recent chat messages for context
-        cursor.execute('''SELECT role, text FROM chat_messages WHERE user_id = ?
-            ORDER BY created_at DESC LIMIT 20''', (patient_id,))
+        # Get recent chat messages
+        cursor.execute('SELECT role, text, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 40', (patient_id,))
         recent = cursor.fetchall()
         if recent:
-            chat_summary = "; ".join([f"{'Patient' if r['role']=='user' else 'Bot'}: {r['text'][:100]}" for r in reversed(recent)])
-            context_parts.append(f"Recent conversations: {chat_summary}")
+            chat_lines = [("Patient" if r['role']=='user' else "Bot") + ": " + r['text'][:200] for r in reversed(recent)]
+            context_parts.append("Chat History:\n" + "\n".join(chat_lines))
 
-        # Get clinical intake if available
-        cursor.execute('SELECT intake_data FROM clinical_intake WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (patient_id,))
-        intake = cursor.fetchone()
-        if intake:
-            try:
-                intake_data = json.loads(intake['intake_data'])
-                if intake_data.get('presenting_concern'):
-                    context_parts.append(f"Presenting concern: {intake_data['presenting_concern']}")
-            except: pass
+        # Get clinical intake
+        try:
+            cursor.execute('SELECT intake_data FROM clinical_intake WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (patient_id,))
+            intake = cursor.fetchone()
+            if intake:
+                try:
+                    intake_data = json.loads(intake['intake_data'])
+                    for key, val in intake_data.items():
+                        if val:
+                            context_parts.append(key.replace('_', ' ').title() + ": " + str(val))
+                except: pass
+        except: pass
+
+        # Get patient clinical data
+        try:
+            cursor.execute('SELECT intake_data FROM patient_clinical_data WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (patient_id,))
+            clinical = cursor.fetchone()
+            if clinical:
+                try:
+                    clinical_data = json.loads(clinical['intake_data'])
+                    for key, val in clinical_data.items():
+                        if val:
+                            context_parts.append(key.replace('_', ' ').title() + ": " + str(val))
+                except: pass
+        except: pass
+
+        # Get assigned tasks
+        try:
+            cursor.execute('SELECT title, description, status, due_date FROM tasks WHERE assigned_to = ? ORDER BY created_at DESC LIMIT 10', (patient_id,))
+            tasks_list = cursor.fetchall()
+            if tasks_list:
+                task_summary = "; ".join([t['title'] + " (status: " + t['status'] + ")" for t in tasks_list])
+                context_parts.append("Assigned Tasks: " + task_summary)
+        except: pass
 
         # Get knowledge graph topics
         graph = extract_knowledge_graph(patient_id)
         if graph.get('stats', {}).get('top_topics'):
             topics = [t[0] for t in graph['stats']['top_topics'][:5]]
-            context_parts.append(f"Key topics discussed: {', '.join(topics)}")
-
+            context_parts.append("Key topics discussed: " + ", ".join(topics))
         conn.close()
 
     enhanced_question = question
     if context_parts:
         context = " | ".join(context_parts)
-        enhanced_question = f"[You are a clinical assistant helping a therapist. {context}] {question}"
+        system_prefix = (
+            "[SYSTEM: You are Teen Zen Assistant, a clinical AI helping a licensed therapist. "
+            "You have access to the following patient data:\n\n"
+        )
+        system_suffix = (
+            "\n\nINSTRUCTIONS:\n"
+            "- Answer questions about this patient using the data above. If the data contains the answer, provide it directly.\n"
+            "- For profile questions (age, name, etc.), check Patient Profile.\n"
+            "- For behavioral patterns, check Chat History and Key Topics.\n"
+            "- For clinical questions, check Clinical Data and Assigned Tasks.\n"
+            "- If info is NOT in the data, say so and suggest the therapist ask the patient or update intake forms.\n"
+            "- You may also answer general knowledge questions to assist the therapist.\n"
+            "- Be professional, concise, and clinically relevant.]\n\n"
+        )
+        enhanced_question = system_prefix + context + system_suffix + "Therapist question: " + question
 
     async def event_generator():
         try:

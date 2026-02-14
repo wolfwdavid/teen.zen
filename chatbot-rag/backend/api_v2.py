@@ -611,6 +611,34 @@ async def get_users_list(authorization: str = Header(None)):
     return {"users": users}
 
 
+
+# ===== TIME & WEATHER HELPERS =====
+def detect_time_question(q):
+    q_lower = q.lower()
+    time_words = ['what time', 'current time', 'time is it', 'time now', 'what day', 'what date', 'today date', "today's date", 'what is today']
+    return any(w in q_lower for w in time_words)
+
+def detect_weather_question(q):
+    q_lower = q.lower()
+    weather_words = ['weather', 'temperature', 'forecast', 'raining', 'sunny', 'cloudy', 'snow', 'hot outside', 'cold outside', 'bring umbrella', 'bring a jacket']
+    return any(w in q_lower for w in weather_words)
+
+def get_current_time_response():
+    from datetime import datetime
+    now = datetime.now()
+    return f"The current date and time is {now.strftime('%A, %B %d, %Y at %I:%M %p')}."
+
+def get_weather_response(location="New York"):
+    try:
+        import urllib.request
+        url = f"https://wttr.in/{location}?format=%C+%t+%h+%w"
+        req = urllib.request.Request(url, headers={"User-Agent": "curl/7.68.0"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = resp.read().decode().strip()
+        return f"Current weather in {location}: {data}. Weather can definitely affect mood - sunny days tend to boost energy while grey or rainy days can feel heavy. How are you feeling today?"
+    except:
+        return "I wasn't able to check the current weather right now, but I know weather can affect mood. How are you feeling today?"
+
 # --- HEALTH & CHAT ---
 @app.get('/health')
 def health():

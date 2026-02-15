@@ -4,7 +4,7 @@ import {
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
   ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save,
-  ChevronLeft, ChevronRight, Archive, Search, Hash, Lock
+  ChevronLeft, ChevronRight, Archive, Search, Hash, Lock, Paperclip
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";

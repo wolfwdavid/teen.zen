@@ -1434,8 +1434,6 @@ export default function App() {
                       onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
                       className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600 resize-none overflow-y-auto max-h-[150px]" />
                   </div>
-                    placeholder={isLoading ? "Generating response..." : "Ask a question about your docs..."}
-                    className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600" />
                   <div className="flex items-center gap-1">
                     {isLoading && (
                       <button type="button" onClick={handleStop} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800"><StopCircle size={20} /></button>

@@ -1924,6 +1924,7 @@ export default function App() {
                                 <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Name</p><p className="text-zinc-300">{patientProfileData.parent2FullName}{patientProfileData.parent2PreferredName ? ` (${patientProfileData.parent2PreferredName})` : ''}</p></div>
                                 {patientProfileData.parent2ContactPhone && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Phone</p><p className="text-zinc-300">{patientProfileData.parent2ContactPhone}</p></div>}
                                 {patientProfileData.parent2ContactEmail && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Email</p><p className="text-zinc-300">{patientProfileData.parent2ContactEmail}</p></div>}
+                                {patientProfileData.parent2EmergencyRelation && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Relationship</p><p className="text-zinc-300">{patientProfileData.parent2EmergencyRelation}</p></div>}
                               </div>
                             </div>
                           )}

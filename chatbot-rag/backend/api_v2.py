@@ -788,6 +788,14 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
                 try:
                     pd = json.loads(profile_row['profile_data'])
                     profile_parts = []
+                    if pd.get('dob'):
+                        try:
+                            from datetime import datetime
+                            dob = datetime.strptime(pd['dob'], '%Y-%m-%d')
+                            today = datetime.now()
+                            age = today.year - dob.year - ((today.month, today.day) < (dob.month, dob.day))
+                            profile_parts.append('Age: ' + str(age) + ' years old (DOB: ' + pd['dob'] + ')')
+                        except: pass
                     if pd.get('fullName'): profile_parts.append('Full name: ' + pd['fullName'])
                     if pd.get('preferredName'): profile_parts.append('Goes by: ' + pd['preferredName'])
                     if pd.get('pronouns'): profile_parts.append('Pronouns: ' + pd['pronouns'])

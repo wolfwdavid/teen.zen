@@ -699,8 +699,15 @@ async def email_verification_status(authorization: str = Header(None)):
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads', 'verification')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def ensure_verification_table()
+def ensure_verification_table():
+    from auth import get_db_connection
+    conn = get_db_connection()
+    conn.execute("CREATE TABLE IF NOT EXISTS user_verification (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, id_document_path TEXT, video_path TEXT, status TEXT DEFAULT 'pending', reviewed_by INTEGER, reviewed_at TIMESTAMP, rejection_reason TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (user_id) REFERENCES users(id))")
+    conn.commit()
+    conn.close()
 
+
+ensure_verification_table()
 def ensure_email_verification_table():
     from auth import get_db_connection
     conn = get_db_connection()
@@ -756,24 +763,7 @@ def send_verification_email(email, code, username):
         return True
     except Exception as e:
         logger.error(f"Failed to send verification email: {e}")
-        return False:
-    from auth import get_db_connection
-    conn = get_db_connection()
-    conn.execute('''CREATE TABLE IF NOT EXISTS user_verification (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        id_document_path TEXT,
-        video_path TEXT,
-        status TEXT DEFAULT 'pending',
-        reviewed_by INTEGER,
-        reviewed_at TIMESTAMP,
-        rejection_reason TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )''')
-    conn.commit()
-    conn.close()
+        return False
 
 ensure_verification_table()
 
@@ -902,27 +892,6 @@ async def serve_verification_file(user_id: int, filename: str, authorization: st
 # ===== VERIFICATION SYSTEM =====
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads', 'verification')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
-
-def ensure_verification_table():
-    from auth import get_db_connection
-    conn = get_db_connection()
-    conn.execute('''CREATE TABLE IF NOT EXISTS user_verification (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        id_document_path TEXT,
-        video_path TEXT,
-        status TEXT DEFAULT 'pending',
-        reviewed_by INTEGER,
-        reviewed_at TIMESTAMP,
-        rejection_reason TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users(id)
-    )''')
-    conn.commit()
-    conn.close()
-
-ensure_verification_table()
 
 @app.post('/api/verification/upload')
 async def upload_verification(

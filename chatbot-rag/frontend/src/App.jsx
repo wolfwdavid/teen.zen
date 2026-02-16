@@ -162,9 +162,15 @@ export default function App() {
     consentAcknowledged: false, confidentialityExplained: false,
     sessionFormat: '', paymentInfo: '',
     campusName: '', campusId: '', isFromOrphanage: false, orphanageName: '',
-    campusName: '', campusId: '', isFromOrphanage: false, orphanageName: ''
   });
   const [profileSaved, setProfileSaved] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(true);
+  const [showEmailVerify, setShowEmailVerify] = useState(false);
+  const [emailVerifyCode, setEmailVerifyCode] = useState(['', '', '', '', '', '']);
+  const [emailVerifySending, setEmailVerifySending] = useState(false);
+  const [emailVerifyError, setEmailVerifyError] = useState('');
+  const [emailVerifySuccess, setEmailVerifySuccess] = useState(false);
+  const emailCodeRefs = [useRef(), useRef(), useRef(), useRef(), useRef(), useRef()];
   const [verificationStatus, setVerificationStatus] = useState('not_submitted');
   const [verificationRejection, setVerificationRejection] = useState('');
   const [verificationLoading, setVerificationLoading] = useState(false);
@@ -428,6 +434,75 @@ export default function App() {
   };
 
   // === VERIFICATION FUNCTIONS ===
+  // === EMAIL VERIFICATION FUNCTIONS ===
+  const checkEmailVerification = async () => {
+    if (!authToken) return;
+    try {
+      const res = await fetch(joinUrl(API_BASE, '/api/auth/verification-status'), { headers: authHeaders(authToken) });
+      if (res.ok) {
+        const d = await res.json();
+        setEmailVerified(d.verified);
+        if (!d.verified) setShowEmailVerify(true);
+      }
+    } catch {}
+  };
+
+  const sendEmailVerificationCode = async () => {
+    setEmailVerifySending(true);
+    setEmailVerifyError('');
+    try {
+      const res = await fetch(joinUrl(API_BASE, '/api/auth/send-verification'), {
+        method: 'POST', headers: { ...authHeaders(authToken), 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        setEmailVerifyError('');
+      } else {
+        const d = await res.json();
+        setEmailVerifyError(d.detail || 'Failed to send code');
+      }
+    } catch { setEmailVerifyError('Network error'); }
+    setEmailVerifySending(false);
+  };
+
+  const handleEmailCodeChange = (index, value) => {
+    if (value.length > 1) value = value.slice(-1);
+    if (value && !/\d/.test(value)) return;
+    const newCode = [...emailVerifyCode];
+    newCode[index] = value;
+    setEmailVerifyCode(newCode);
+    if (value && index < 5) emailCodeRefs[index + 1].current?.focus();
+  };
+
+  const handleEmailCodeKeyDown = (index, e) => {
+    if (e.key === 'Backspace' && !emailVerifyCode[index] && index > 0) {
+      emailCodeRefs[index - 1].current?.focus();
+    }
+  };
+
+  const submitEmailVerification = async () => {
+    const code = emailVerifyCode.join('');
+    if (code.length !== 6) { setEmailVerifyError('Please enter all 6 digits'); return; }
+    setEmailVerifySending(true);
+    setEmailVerifyError('');
+    try {
+      const res = await fetch(joinUrl(API_BASE, '/api/auth/verify-email'), {
+        method: 'POST',
+        headers: { ...authHeaders(authToken), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+      if (res.ok) {
+        setEmailVerified(true);
+        setEmailVerifySuccess(true);
+        setTimeout(() => { setShowEmailVerify(false); setEmailVerifySuccess(false); }, 2000);
+      } else {
+        const d = await res.json();
+        setEmailVerifyError(d.detail || 'Invalid code');
+        setEmailVerifyCode(['', '', '', '', '', '']);
+      }
+    } catch { setEmailVerifyError('Network error'); }
+    setEmailVerifySending(false);
+  };
+
   const loadVerificationStatus = async () => {
     if (!authToken) return;
     try {
@@ -558,6 +633,7 @@ export default function App() {
     if (view === 'profile' && authToken) {
       loadTasks();
       loadVerificationStatus();
+      checkEmailVerification();
       if (currentUser?.role === 'provider') {
         loadUsers();
         loadProviderPatients();

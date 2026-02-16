@@ -1,10 +1,17 @@
 ﻿import os
+import resend
+import random
+import string
+
+# Resend email config
+resend.api_key = "re_ZR1r7oGR_EZ39ASzBdEyiay8d6TZskwYs"
+VERIFY_FROM_EMAIL = "onboarding@resend.dev"
 import logging
 import json
 import chain_v2
 from typing import Optional
 from datetime import timedelta, datetime, timezone
-from fastapi import FastAPI, HTTPException, Query, Header, Request
+from fastapi import FastAPI, HTTPException, Query, Header, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 import urllib.request
@@ -612,11 +619,144 @@ async def get_users_list(authorization: str = Header(None)):
 
 
 
+# ===== EMAIL VERIFICATION =====
+@app.post('/api/auth/send-verification')
+async def send_verification(request: Request, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    from auth import get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    code = generate_verification_code()
+    expires = (datetime.now() + timedelta(minutes=15)).isoformat()
+    
+    # Delete old codes for this user
+    cursor.execute('DELETE FROM email_verification WHERE user_id = ?', (user['id'],))
+    
+    # Insert new code
+    cursor.execute(
+        'INSERT INTO email_verification (user_id, email, code, expires_at) VALUES (?, ?, ?, ?)',
+        (user['id'], user['email'], code, expires)
+    )
+    conn.commit()
+    conn.close()
+    
+    success = send_verification_email(user['email'], code, user['username'])
+    if success:
+        return {"message": "Verification code sent", "email": user['email']}
+    else:
+        raise HTTPException(status_code=500, detail="Failed to send verification email")
+
+@app.post('/api/auth/verify-email')
+async def verify_email(request: Request, authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    body = await request.json()
+    code = body.get('code', '').strip()
+    
+    if not code or len(code) != 6:
+        raise HTTPException(status_code=400, detail="Invalid code format")
+    
+    from auth import get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    cursor.execute(
+        'SELECT * FROM email_verification WHERE user_id = ? AND code = ? AND verified = 0 ORDER BY created_at DESC LIMIT 1',
+        (user['id'], code)
+    )
+    row = cursor.fetchone()
+    
+    if not row:
+        conn.close()
+        raise HTTPException(status_code=400, detail="Invalid verification code")
+    
+    # Check expiry
+    if datetime.fromisoformat(row['expires_at']) < datetime.now():
+        conn.close()
+        raise HTTPException(status_code=400, detail="Code has expired. Please request a new one.")
+    
+    # Mark as verified
+    cursor.execute('UPDATE email_verification SET verified = 1 WHERE id = ?', (row['id'],))
+    cursor.execute('UPDATE users SET email_verified = 1 WHERE id = ?', (user['id'],))
+    conn.commit()
+    conn.close()
+    
+    return {"message": "Email verified successfully", "verified": True}
+
+@app.get('/api/auth/verification-status')
+async def email_verification_status(authorization: str = Header(None)):
+    user = get_current_user(authorization)
+    from auth import get_db_connection
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute('SELECT email_verified FROM users WHERE id = ?', (user['id'],))
+    row = cursor.fetchone()
+    conn.close()
+    verified = row['email_verified'] if row and row['email_verified'] else 0
+    return {"verified": bool(verified), "email": user['email']}
+
 # ===== VERIFICATION SYSTEM =====
 UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads', 'verification')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
-def ensure_verification_table():
+def ensure_verification_table()
+
+def ensure_email_verification_table():
+    from auth import get_db_connection
+    conn = get_db_connection()
+    conn.execute('''CREATE TABLE IF NOT EXISTS email_verification (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        email TEXT NOT NULL,
+        code TEXT NOT NULL,
+        expires_at TIMESTAMP NOT NULL,
+        verified INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id)
+    )''')
+    # Add email_verified column to users if not exists
+    try:
+        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
+    except: pass
+    conn.commit()
+    conn.close()
+
+ensure_email_verification_table()
+
+def generate_verification_code():
+    return ''.join(random.choices(string.digits, k=6))
+
+def send_verification_email(email, code, username):
+    try:
+        params = {
+            "from": VERIFY_FROM_EMAIL,
+            "to": [email],
+            "subject": "Teen Zen - Verify Your Email",
+            "html": f"""
+            <div style="font-family: -apple-system, BlinkMacSystemFont, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+                <div style="text-align: center; margin-bottom: 30px;">
+                    <h1 style="color: #1E1B4B; font-size: 24px; margin: 0;">Teen Zen</h1>
+                    <p style="color: #6366f1; font-size: 12px; letter-spacing: 2px; margin-top: 4px;">MENTAL HEALTH SUPPORT</p>
+                </div>
+                <div style="background: #f8f9fa; border-radius: 16px; padding: 30px; text-align: center;">
+                    <p style="color: #374151; font-size: 16px; margin-bottom: 8px;">Hi {username},</p>
+                    <p style="color: #6b7280; font-size: 14px; margin-bottom: 24px;">Enter this code to verify your email address:</p>
+                    <div style="background: #1E1B4B; color: white; font-size: 32px; letter-spacing: 8px; font-weight: bold; padding: 16px 24px; border-radius: 12px; display: inline-block;">
+                        {code}
+                    </div>
+                    <p style="color: #9ca3af; font-size: 12px; margin-top: 24px;">This code expires in 15 minutes.</p>
+                </div>
+                <p style="color: #9ca3af; font-size: 11px; text-align: center; margin-top: 20px;">
+                    If you didn't create a Teen Zen account, you can safely ignore this email.
+                </p>
+            </div>
+            """
+        }
+        resend.Emails.send(params)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to send verification email: {e}")
+        return False:
     from auth import get_db_connection
     conn = get_db_connection()
     conn.execute('''CREATE TABLE IF NOT EXISTS user_verification (

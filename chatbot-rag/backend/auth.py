@@ -126,7 +126,7 @@ def create_user(username: str, email: str, password: str, role: str = "user", ag
                 print(f"⚠️ Auto-assign failed: {e}")
 
         return {"id": user_id, "username": username, "email": email, "role": role, "email_sent": email_sent}
-    except sqlite3.IntegrityError as e:
+    except psycopg2.IntegrityError as e:
         conn.close()
         if "username" in str(e):
             raise ValueError("Username already exists")
@@ -467,7 +467,7 @@ def assign_patient_to_provider(provider_id: int, user_id: int):
     try:
         cursor.execute('INSERT INTO provider_patients (provider_id, user_id) VALUES (%s, %s)', (provider_id, user_id))
         conn.commit()
-    except sqlite3.IntegrityError:
+    except psycopg2.IntegrityError:
         conn.close()
         raise ValueError("Patient already assigned to this provider")
     conn.close()

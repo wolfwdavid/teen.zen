@@ -1,6 +1,27 @@
 from db import get_db_connection, dict_cursor
 import os
 import resend
+from groq import Groq
+
+# Groq API config
+GROQ_API_KEY = "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"
+GROQ_MODEL = "llama-3.3-70b-versatile"
+groq_client = Groq(api_key=GROQ_API_KEY)
+
+TEEN_SYSTEM_PROMPT = """You are Teen Zen, a compassionate and empathetic AI mental health support companion designed specifically for teenagers. 
+
+Your approach:
+- Be warm, non-judgmental, and validating
+- Use language teens can relate to, but remain professional
+- Ask thoughtful follow-up questions to understand their feelings
+- Offer practical coping strategies when appropriate
+- Encourage professional help when needed
+- Never diagnose or prescribe medication
+- Take any mention of self-harm or suicidal thoughts seriously and encourage them to reach out to a trusted adult or crisis helpline (988 Suicide & Crisis Lifeline)
+- Keep responses concise but caring (2-4 sentences usually)
+- Remember you are a support tool, not a replacement for therapy
+
+If the user shares their name, age, or other personal info, acknowledge it warmly and use it to personalize the conversation."""
 import random
 import string
 
@@ -618,6 +639,45 @@ async def get_users_list(authorization: str = Header(None)):
 
 
 
+# ===== GROQ CHAT FUNCTIONS =====
+def groq_stream_response(question, system_prompt=None, context=None):
+    """Stream response from Groq API. Returns generator of tokens."""
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    
+    # Add RAG context if available
+    if context:
+        messages.append({"role": "system", "content": f"Relevant knowledge base context:\n{context}"})
+    
+    messages.append({"role": "user", "content": question})
+    
+    try:
+        stream = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=messages,
+            temperature=0.7,
+            max_tokens=1024,
+            stream=True
+        )
+        for chunk in stream:
+            if chunk.choices[0].delta.content:
+                yield chunk.choices[0].delta.content
+    except Exception as e:
+        logger.error(f"Groq API error: {e}")
+        raise
+
+def get_rag_context(question):
+    """Get relevant context from RAG retriever."""
+    try:
+        if chain_v2.retriever:
+            docs = chain_v2.retriever.invoke(question)
+            if docs:
+                return "\n".join([d.page_content[:500] for d in docs[:3]])
+    except Exception as e:
+        logger.error(f"RAG retrieval error: {e}")
+    return None
+
 # ===== EMAIL VERIFICATION =====
 @app.post('/api/auth/send-verification')
 async def send_verification(request: Request, authorization: str = Header(None)):
@@ -1081,11 +1141,24 @@ async def chat_stream(question: str = Query(...)):
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
 
+            # Try Groq API first (primary), fall back to local Qwen
+            rag_context = get_rag_context(question)
             full_text = ""
-            for token in chain_v2.rag_chain.stream(question):
-                full_text += token
-                yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            try:
+                for token in groq_stream_response(question, system_prompt=TEEN_SYSTEM_PROMPT, context=rag_context):
+                    full_text += token
+                    yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            except Exception as groq_err:
+                logger.warning(f"Groq failed, falling back to Qwen: {groq_err}")
+                full_text = ""
+                if chain_v2.rag_chain:
+                    for token in chain_v2.rag_chain.stream(question):
+                        full_text += token
+                        yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Both Groq and local model unavailable'})}\n\n"
         except Exception as e:
             logger.error(f"💥 [Stream] Error: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
@@ -1242,9 +1315,27 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
                 return
 
-            for token in chain_v2.rag_chain.stream(enhanced_question):
-                yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            # Try Groq API first (primary), fall back to local Qwen
+            full_text = ""
+            try:
+                provider_system = (
+                    "You are Teen Zen Assistant, a clinical AI helping a licensed therapist. "
+                    "Be professional, concise, and clinically relevant. "
+                    "Answer questions about patients using the provided data. "
+                    "If information is not available, say so and suggest the therapist ask the patient."
+                )
+                for token in groq_stream_response(enhanced_question, system_prompt=provider_system):
+                    full_text += token
+                    yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            except Exception as groq_err:
+                logger.warning(f"Groq failed for provider, falling back to Qwen: {groq_err}")
+                if chain_v2.rag_chain:
+                    for token in chain_v2.rag_chain.stream(enhanced_question):
+                        yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
+                    yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                else:
+                    yield f"data: {json.dumps({'type': 'error', 'message': 'Both Groq and local model unavailable'})}\n\n"
         except Exception as e:
             logger.error(f"💥 [Provider Stream] Error: {str(e)}", exc_info=True)
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"

@@ -1,10 +1,12 @@
 from db import get_db_connection, dict_cursor
 import os
+from dotenv import load_dotenv
+load_dotenv()
 import resend
 from groq import Groq
 
 # Groq API config
-GROQ_API_KEY = "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"
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 GROQ_MODEL = "llama-3.3-70b-versatile"
 groq_client = Groq(api_key=GROQ_API_KEY)
 
@@ -26,7 +28,7 @@ import random
 import string
 
 # Resend email config
-resend.api_key = "re_ZR1r7oGR_EZ39ASzBdEyiay8d6TZskwYs"
+resend.api_key = os.environ.get("RESEND_API_KEY", "")
 VERIFY_FROM_EMAIL = "onboarding@resend.dev"
 import logging
 import json

@@ -48,3 +48,4 @@ chatbot-rag/backend/.onnx/
 # Build outputs
 svelte-teen-zen/dist/
 chatbot-rag/backend/models/
+.env

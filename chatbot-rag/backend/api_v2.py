@@ -1,4 +1,5 @@
-﻿import os
+from db import get_db_connection, dict_cursor
+import os
 import resend
 import random
 import string
@@ -41,7 +42,7 @@ from auth import (
     # Provider info for users
     get_provider_info_for_user,
     ACCESS_TOKEN_EXPIRE_MINUTES, get_user_by_email,
-    MAX_PATIENTS_PER_PROVIDER
+    MAX_PATIENTS_PER_PROVIDER, get_db_connection
 )
 from database import migrate_db
 from dotenv import load_dotenv
@@ -58,6 +59,8 @@ app = FastAPI(title='RAG Chatbot – V2')
 async def startup_event():
     logger.info("🚀 Starting up API server...")
     migrate_db()
+    ensure_verification_table()
+    ensure_email_verification_table()
     chain_v2.initialize_global_vars()
     logger.info("✅ RAG chain initialized and ready for requests.")
 
@@ -306,7 +309,7 @@ async def get_profile(authorization: str = Header(None)):
     if pic: result['profile_pic'] = pic
     if user.get('role') == 'provider':
         result['patient_count'] = get_patient_count(user['id'])
-        result['max_patients'] = MAX_PATIENTS_PER_PROVIDER
+        result['max_patients'] = MAX_PATIENTS_PER_PROVIDER, get_db_connection
     return result
 
 @app.post("/api/profile/pic")
@@ -331,9 +334,8 @@ async def save_profile_data(request: Request, authorization: str = Header(None))
     user = get_current_user(authorization)
     body = await request.json()
     profile_data = body.get('profile_data', {})
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
     data_json = json.dumps(profile_data)
     now = datetime.utcnow().isoformat()
     cursor.execute("""
@@ -349,10 +351,9 @@ async def save_profile_data(request: Request, authorization: str = Header(None))
 @app.get("/api/profile/data")
 async def get_profile_data(authorization: str = Header(None)):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = ?', (user['id'],))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = %s', (user['id'],))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -366,10 +367,9 @@ async def get_profile_data(authorization: str = Header(None)):
 async def get_patient_profile_data(user_id: int, authorization: str = Header(None)):
     user = get_current_user(authorization)
     require_provider(user)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = ?', (user_id,))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = %s', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if row:
@@ -401,9 +401,8 @@ async def get_history(authorization: str = Header(None), year: Optional[int] = N
         target_id = user_id
         all_messages = True
     if all_messages:
-        from auth import get_db_connection
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = dict_cursor(conn)
         cursor.execute('''SELECT role, text, sources, timing, created_at FROM chat_messages
             WHERE user_id = ? ORDER BY created_at ASC''', (target_id,))
         rows = cursor.fetchall()
@@ -623,15 +622,14 @@ async def get_users_list(authorization: str = Header(None)):
 @app.post('/api/auth/send-verification')
 async def send_verification(request: Request, authorization: str = Header(None)):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
     
     code = generate_verification_code()
     expires = (datetime.now() + timedelta(minutes=15)).isoformat()
     
     # Delete old codes for this user
-    cursor.execute('DELETE FROM email_verification WHERE user_id = ?', (user['id'],))
+    cursor.execute('DELETE FROM email_verification WHERE user_id = %s', (user['id'],))
     
     # Insert new code
     cursor.execute(
@@ -656,9 +654,8 @@ async def verify_email(request: Request, authorization: str = Header(None)):
     if not code or len(code) != 6:
         raise HTTPException(status_code=400, detail="Invalid code format")
     
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
     
     cursor.execute(
         'SELECT * FROM email_verification WHERE user_id = ? AND code = ? AND verified = 0 ORDER BY created_at DESC LIMIT 1',
@@ -676,8 +673,8 @@ async def verify_email(request: Request, authorization: str = Header(None)):
         raise HTTPException(status_code=400, detail="Code has expired. Please request a new one.")
     
     # Mark as verified
-    cursor.execute('UPDATE email_verification SET verified = 1 WHERE id = ?', (row['id'],))
-    cursor.execute('UPDATE users SET email_verified = 1 WHERE id = ?', (user['id'],))
+    cursor.execute('UPDATE email_verification SET verified = 1 WHERE id = %s', (row['id'],))
+    cursor.execute('UPDATE users SET email_verified = 1 WHERE id = %s', (user['id'],))
     conn.commit()
     conn.close()
     
@@ -686,10 +683,9 @@ async def verify_email(request: Request, authorization: str = Header(None)):
 @app.get('/api/auth/verification-status')
 async def email_verification_status(authorization: str = Header(None)):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT email_verified FROM users WHERE id = ?', (user['id'],))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT email_verified FROM users WHERE id = %s', (user['id'],))
     row = cursor.fetchone()
     conn.close()
     verified = row['email_verified'] if row and row['email_verified'] else 0
@@ -700,19 +696,18 @@ UPLOAD_DIR = os.path.join(os.path.dirname(__file__), 'uploads', 'verification')
 os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 def ensure_verification_table():
-    from auth import get_db_connection
     conn = get_db_connection()
-    conn.execute("CREATE TABLE IF NOT EXISTS user_verification (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, id_document_path TEXT, video_path TEXT, status TEXT DEFAULT 'pending', reviewed_by INTEGER, reviewed_at TIMESTAMP, rejection_reason TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (user_id) REFERENCES users(id))")
+    cur = conn.cursor()
+    cur.execute("CREATE TABLE IF NOT EXISTS user_verification (id SERIAL PRIMARY KEY, user_id INTEGER NOT NULL, id_document_path TEXT, video_path TEXT, status TEXT DEFAULT 'pending', reviewed_by INTEGER, reviewed_at TIMESTAMP, rejection_reason TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP, FOREIGN KEY (user_id) REFERENCES users(id))")
     conn.commit()
     conn.close()
 
 
-ensure_verification_table()
 def ensure_email_verification_table():
-    from auth import get_db_connection
     conn = get_db_connection()
-    conn.execute('''CREATE TABLE IF NOT EXISTS email_verification (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
+    cur = conn.cursor()
+    cur.execute('''CREATE TABLE IF NOT EXISTS email_verification (
+        id SERIAL PRIMARY KEY,
         user_id INTEGER NOT NULL,
         email TEXT NOT NULL,
         code TEXT NOT NULL,
@@ -723,12 +718,11 @@ def ensure_email_verification_table():
     )''')
     # Add email_verified column to users if not exists
     try:
-        conn.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
+        cur.execute("ALTER TABLE users ADD COLUMN email_verified INTEGER DEFAULT 0")
     except: pass
     conn.commit()
     conn.close()
 
-ensure_email_verification_table()
 
 def generate_verification_code():
     return ''.join(random.choices(string.digits, k=6))
@@ -765,7 +759,6 @@ def send_verification_email(email, code, username):
         logger.error(f"Failed to send verification email: {e}")
         return False
 
-ensure_verification_table()
 
 @app.post('/api/verification/upload')
 async def upload_verification(
@@ -774,9 +767,8 @@ async def upload_verification(
     authorization: str = Header(None)
 ):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
 
     # Create user directory
     user_dir = os.path.join(UPLOAD_DIR, str(user['id']))
@@ -798,7 +790,7 @@ async def upload_verification(
             f.write(await video.read())
 
     # Check if existing record
-    cursor.execute('SELECT id FROM user_verification WHERE user_id = ?', (user['id'],))
+    cursor.execute('SELECT id FROM user_verification WHERE user_id = %s', (user['id'],))
     existing = cursor.fetchone()
 
     if existing:
@@ -811,7 +803,7 @@ async def upload_verification(
             updates.append("video_path = ?")
             params.append(video_path)
         params.append(user['id'])
-        cursor.execute(f"UPDATE user_verification SET {', '.join(updates)} WHERE user_id = ?", params)
+        cursor.execute(f"UPDATE user_verification SET {', '.join(updates)} WHERE user_id = %s", params)
     else:
         cursor.execute(
             "INSERT INTO user_verification (user_id, id_document_path, video_path) VALUES (?, ?, ?)",
@@ -825,10 +817,9 @@ async def upload_verification(
 @app.get('/api/verification/status')
 async def get_verification_status(authorization: str = Header(None)):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT status, created_at, updated_at, rejection_reason FROM user_verification WHERE user_id = ?', (user['id'],))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT status, created_at, updated_at, rejection_reason FROM user_verification WHERE user_id = %s', (user['id'],))
     row = cursor.fetchone()
     conn.close()
     if not row:
@@ -839,10 +830,9 @@ async def get_verification_status(authorization: str = Header(None)):
 async def get_patient_verification(user_id: int, authorization: str = Header(None)):
     user = get_current_user(authorization)
     require_provider(user)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM user_verification WHERE user_id = ?', (user_id,))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT * FROM user_verification WHERE user_id = %s', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if not row:
@@ -864,13 +854,12 @@ async def review_verification(user_id: int, request: Request, authorization: str
     body = await request.json()
     action = body.get('action')  # 'approve' or 'reject'
     reason = body.get('reason', '')
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
     if action == 'approve':
-        cursor.execute("UPDATE user_verification SET status = 'approved', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE user_id = ?", (user['id'], user_id))
+        cursor.execute("UPDATE user_verification SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP WHERE user_id = %s", (user['id'], user_id))
     elif action == 'reject':
-        cursor.execute("UPDATE user_verification SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, rejection_reason = ? WHERE user_id = ?", (user['id'], user_id, reason))
+        cursor.execute("UPDATE user_verification SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, rejection_reason = %s WHERE user_id = %s", (user['id'], user_id, reason))
     conn.commit()
     conn.close()
     return {"status": action + "d"}
@@ -900,9 +889,8 @@ async def upload_verification(
     authorization: str = Header(None)
 ):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
 
     # Create user directory
     user_dir = os.path.join(UPLOAD_DIR, str(user['id']))
@@ -924,7 +912,7 @@ async def upload_verification(
             f.write(await video.read())
 
     # Check if existing record
-    cursor.execute('SELECT id FROM user_verification WHERE user_id = ?', (user['id'],))
+    cursor.execute('SELECT id FROM user_verification WHERE user_id = %s', (user['id'],))
     existing = cursor.fetchone()
 
     if existing:
@@ -937,7 +925,7 @@ async def upload_verification(
             updates.append("video_path = ?")
             params.append(video_path)
         params.append(user['id'])
-        cursor.execute(f"UPDATE user_verification SET {', '.join(updates)} WHERE user_id = ?", params)
+        cursor.execute(f"UPDATE user_verification SET {', '.join(updates)} WHERE user_id = %s", params)
     else:
         cursor.execute(
             "INSERT INTO user_verification (user_id, id_document_path, video_path) VALUES (?, ?, ?)",
@@ -951,10 +939,9 @@ async def upload_verification(
 @app.get('/api/verification/status')
 async def get_verification_status(authorization: str = Header(None)):
     user = get_current_user(authorization)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT status, created_at, updated_at, rejection_reason FROM user_verification WHERE user_id = ?', (user['id'],))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT status, created_at, updated_at, rejection_reason FROM user_verification WHERE user_id = %s', (user['id'],))
     row = cursor.fetchone()
     conn.close()
     if not row:
@@ -965,10 +952,9 @@ async def get_verification_status(authorization: str = Header(None)):
 async def get_patient_verification(user_id: int, authorization: str = Header(None)):
     user = get_current_user(authorization)
     require_provider(user)
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
-    cursor.execute('SELECT * FROM user_verification WHERE user_id = ?', (user_id,))
+    cursor = dict_cursor(conn)
+    cursor.execute('SELECT * FROM user_verification WHERE user_id = %s', (user_id,))
     row = cursor.fetchone()
     conn.close()
     if not row:
@@ -990,13 +976,12 @@ async def review_verification(user_id: int, request: Request, authorization: str
     body = await request.json()
     action = body.get('action')  # 'approve' or 'reject'
     reason = body.get('reason', '')
-    from auth import get_db_connection
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = dict_cursor(conn)
     if action == 'approve':
-        cursor.execute("UPDATE user_verification SET status = 'approved', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP WHERE user_id = ?", (user['id'], user_id))
+        cursor.execute("UPDATE user_verification SET status = 'approved', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP WHERE user_id = %s", (user['id'], user_id))
     elif action == 'reject':
-        cursor.execute("UPDATE user_verification SET status = 'rejected', reviewed_by = ?, reviewed_at = CURRENT_TIMESTAMP, rejection_reason = ? WHERE user_id = ?", (user['id'], user_id, reason))
+        cursor.execute("UPDATE user_verification SET status = 'rejected', reviewed_by = %s, reviewed_at = CURRENT_TIMESTAMP, rejection_reason = %s WHERE user_id = %s", (user['id'], user_id, reason))
     conn.commit()
     conn.close()
     return {"status": action + "d"}
@@ -1116,11 +1101,10 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
     # Build context from patient data if specified
     context_parts = []
     if patient_id:
-        from auth import get_db_connection
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = dict_cursor(conn)
         # Get patient info - pull ALL available fields
-        cursor.execute('SELECT username, email, age, phone, role, created_at, last_login FROM users WHERE id = ?', (patient_id,))
+        cursor.execute('SELECT username, email, age, phone, role, created_at, last_login FROM users WHERE id = %s', (patient_id,))
         patient = cursor.fetchone()
         if patient:
             profile_info = [f"Name: {patient['username']}"]
@@ -1137,7 +1121,7 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
             context_parts.append("Patient Profile: " + ", ".join(profile_info))
 
         # Get recent chat messages
-        cursor.execute('SELECT role, text, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at DESC LIMIT 10', (patient_id,))
+        cursor.execute('SELECT role, text, created_at FROM chat_messages WHERE user_id = %s ORDER BY created_at DESC LIMIT 10', (patient_id,))
         recent = cursor.fetchall()
         if recent:
             chat_lines = [("Patient" if r['role']=='user' else "Bot") + ": " + r['text'][:80] for r in reversed(recent)]
@@ -1145,7 +1129,7 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
 
         # Get clinical intake
         try:
-            cursor.execute('SELECT intake_data FROM clinical_intake WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (patient_id,))
+            cursor.execute('SELECT intake_data FROM clinical_intake WHERE user_id = %s ORDER BY updated_at DESC LIMIT 1', (patient_id,))
             intake = cursor.fetchone()
             if intake:
                 try:
@@ -1158,7 +1142,7 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
 
         # Get patient clinical data
         try:
-            cursor.execute('SELECT intake_data FROM patient_clinical_data WHERE user_id = ? ORDER BY updated_at DESC LIMIT 1', (patient_id,))
+            cursor.execute('SELECT intake_data FROM patient_clinical_data WHERE user_id = %s ORDER BY updated_at DESC LIMIT 1', (patient_id,))
             clinical = cursor.fetchone()
             if clinical:
                 try:
@@ -1171,7 +1155,7 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
 
         # Get assigned tasks
         try:
-            cursor.execute('SELECT title, description, status, due_date FROM tasks WHERE assigned_to = ? ORDER BY created_at DESC LIMIT 10', (patient_id,))
+            cursor.execute('SELECT title, description, status, due_date FROM tasks WHERE assigned_to = %s ORDER BY created_at DESC LIMIT 10', (patient_id,))
             tasks_list = cursor.fetchall()
             if tasks_list:
                 task_summary = "; ".join([t['title'] + " (status: " + t['status'] + ")" for t in tasks_list])
@@ -1185,7 +1169,7 @@ async def provider_chat_stream(question: str = Query(...), patient_id: Optional[
             context_parts.append("Key topics discussed: " + ", ".join(topics))
         # Get user profile data (name, DOB, parents, emergency contact)
         try:
-            cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = ?', (patient_id,))
+            cursor.execute('SELECT profile_data FROM user_profile_data WHERE user_id = %s', (patient_id,))
             profile_row = cursor.fetchone()
             if profile_row:
                 try:

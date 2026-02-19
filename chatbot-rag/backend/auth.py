@@ -2,7 +2,8 @@ from passlib.context import CryptContext
 from datetime import datetime, timedelta
 from jose import JWTError, jwt
 from typing import Optional
-import sqlite3
+from db import get_db_connection, dict_cursor
+import psycopg2
 from pathlib import Path
 import secrets
 import hashlib
@@ -34,9 +35,9 @@ MAX_PATIENTS_PER_PROVIDER = 15
 
 
 def get_db_connection():
-    conn = sqlite3.connect(DB_PATH)
-    conn.row_factory = sqlite3.Row
-    return conn
+    """Get PostgreSQL connection."""
+    from db import get_db_connection as _get_conn
+    return _get_conn()
 
 
 def hash_password(password: str) -> str:
@@ -137,7 +138,7 @@ def create_user(username: str, email: str, password: str, role: str = "user", ag
 def verify_email_pin(email: str, pin: str) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = ? AND email_verified = 0', (email,))
+    cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = %s AND email_verified = 0', (email,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -150,7 +151,7 @@ def verify_email_pin(email: str, pin: str) -> bool:
     if stored_pin != pin:
         conn.close()
         return False
-    cursor.execute('UPDATE users SET email_verified = 1, verification_token = NULL, pin_expires_at = NULL WHERE email = ?', (email,))
+    cursor.execute('UPDATE users SET email_verified = 1, verification_token = NULL, pin_expires_at = NULL WHERE email = %s', (email,))
     conn.commit()
     conn.close()
     return True
@@ -159,7 +160,7 @@ def verify_email_pin(email: str, pin: str) -> bool:
 def resend_verification_pin(email: str) -> bool:
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT username, email_verified FROM users WHERE email = ?', (email,))
+    cursor.execute('SELECT username, email_verified FROM users WHERE email = %s', (email,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -169,7 +170,7 @@ def resend_verification_pin(email: str) -> bool:
         raise ValueError("Email is already verified")
     new_pin = generate_pin()
     pin_expires = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
-    cursor.execute('UPDATE users SET verification_token = ?, pin_expires_at = ? WHERE email = ?', (new_pin, pin_expires, email))
+    cursor.execute('UPDATE users SET verification_token = %s, pin_expires_at = %s WHERE email = %s', (new_pin, pin_expires, email))
     conn.commit()
     conn.close()
     return send_verification_email(email, new_pin, row['username'])
@@ -178,7 +179,7 @@ def resend_verification_pin(email: str) -> bool:
 def get_user_by_email(email: str):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE email = ?', (email,))
+    cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
     user = cursor.fetchone()
     conn.close()
     return dict(user) if user else None
@@ -187,7 +188,7 @@ def get_user_by_email(email: str):
 def get_user_by_id(user_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT * FROM users WHERE id = ?', (user_id,))
+    cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))
     user = cursor.fetchone()
     conn.close()
     return dict(user) if user else None
@@ -201,7 +202,7 @@ def authenticate_user(email: str, password: str):
         return None
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (datetime.utcnow(), user['id']))
+    cursor.execute('UPDATE users SET last_login = %s WHERE id = %s', (datetime.utcnow(), user['id']))
     conn.commit()
     conn.close()
     return user
@@ -232,7 +233,7 @@ def get_or_create_google_user(google_info: dict):
     if user:
         conn = get_db_connection()
         cursor = conn.cursor()
-        cursor.execute('UPDATE users SET last_login = ? WHERE id = ?', (datetime.utcnow(), user['id']))
+        cursor.execute('UPDATE users SET last_login = %s WHERE id = %s', (datetime.utcnow(), user['id']))
         conn.commit()
         conn.close()
         return user
@@ -243,14 +244,14 @@ def get_or_create_google_user(google_info: dict):
     base_username = username
     counter = 1
     while True:
-        cursor.execute('SELECT id FROM users WHERE username = ?', (username,))
+        cursor.execute('SELECT id FROM users WHERE username = %s', (username,))
         if not cursor.fetchone():
             break
         username = f"{base_username}{counter}"
         counter += 1
     random_password = secrets.token_urlsafe(32)
     password_hash = hash_password(random_password)
-    cursor.execute('INSERT INTO users (username, email, password_hash, role, email_verified) VALUES (?, ?, ?, \'user\', 1)', (username, email, password_hash))
+    cursor.execute('INSERT INTO users (username, email, password_hash, role, email_verified) VALUES (%s, %s, %s, \'user\', 1)', (username, email, password_hash))
     conn.commit()
     user_id = cursor.lastrowid
     conn.close()
@@ -265,7 +266,7 @@ def get_or_create_google_user(google_info: dict):
 def verify_email_token(token: str):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE users SET email_verified = 1, verification_token = NULL WHERE verification_token = ?', (token,))
+    cursor.execute('UPDATE users SET email_verified = 1, verification_token = NULL WHERE verification_token = %s', (token,))
     rows_affected = cursor.rowcount
     conn.commit()
     conn.close()
@@ -290,7 +291,7 @@ def get_current_quarter():
 def save_chat_message(user_id: int, role: str, text: str, sources: str = None, timing: float = None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO chat_messages (user_id, role, text, sources, timing) VALUES (?, ?, ?, ?, ?)',
+    cursor.execute('INSERT INTO chat_messages (user_id, role, text, sources, timing) VALUES (%s, %s, %s, %s, %s)',
                    (user_id, role, text, sources, timing))
     conn.commit()
     conn.close()
@@ -343,7 +344,7 @@ def clear_chat_history(user_id: int):
     start_date, end_date = get_quarter_dates(year, quarter)
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE chat_messages SET hidden = 1 WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?',
+    cursor.execute('UPDATE chat_messages SET hidden = 1 WHERE user_id = %s AND date(created_at) >= %s AND date(created_at) <= %s',
                    (user_id, start_date, end_date))
     conn.commit()
     conn.close()
@@ -366,7 +367,7 @@ def get_chat_history_for_archive(user_id: int, year: int, quarter: int):
 def create_archive_record(user_id: int, provider_id: int, quarter: int, year: int, message_count: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO chat_archives (user_id, provider_id, quarter, year, message_count) VALUES (?, ?, ?, ?, ?)',
+    cursor.execute('INSERT INTO chat_archives (user_id, provider_id, quarter, year, message_count) VALUES (%s, %s, %s, %s, %s)',
                    (user_id, provider_id, f"Q{quarter}", year, message_count))
     conn.commit()
     archive_id = cursor.lastrowid
@@ -390,7 +391,7 @@ def get_archives_for_provider(provider_id: int):
 def get_provider_for_user(user_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT provider_id FROM provider_patients WHERE user_id = ? LIMIT 1', (user_id,))
+    cursor.execute('SELECT provider_id FROM provider_patients WHERE user_id = %s LIMIT 1', (user_id,))
     row = cursor.fetchone()
     conn.close()
     return row['provider_id'] if row else None
@@ -422,7 +423,7 @@ def auto_assign_patient(user_id: int):
     cursor = conn.cursor()
 
     # Check if already assigned
-    cursor.execute('SELECT id FROM provider_patients WHERE user_id = ?', (user_id,))
+    cursor.execute('SELECT id FROM provider_patients WHERE user_id = %s', (user_id,))
     if cursor.fetchone():
         conn.close()
         return  # Already assigned
@@ -441,7 +442,7 @@ def auto_assign_patient(user_id: int):
     row = cursor.fetchone()
 
     if row:
-        cursor.execute('INSERT OR IGNORE INTO provider_patients (provider_id, user_id) VALUES (?, ?)',
+        cursor.execute('INSERT OR IGNORE INTO provider_patients (provider_id, user_id) VALUES (%s, %s)',
                        (row['id'], user_id))
         conn.commit()
         print(f"✅ Auto-assigned user {user_id} to provider {row['id']}")
@@ -457,14 +458,14 @@ def assign_patient_to_provider(provider_id: int, user_id: int):
     cursor = conn.cursor()
 
     # Check capacity
-    cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = ?', (provider_id,))
+    cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = %s', (provider_id,))
     count = cursor.fetchone()['cnt']
     if count >= MAX_PATIENTS_PER_PROVIDER:
         conn.close()
         raise ValueError(f"Provider has reached maximum of {MAX_PATIENTS_PER_PROVIDER} patients")
 
     try:
-        cursor.execute('INSERT INTO provider_patients (provider_id, user_id) VALUES (?, ?)', (provider_id, user_id))
+        cursor.execute('INSERT INTO provider_patients (provider_id, user_id) VALUES (%s, %s)', (provider_id, user_id))
         conn.commit()
     except sqlite3.IntegrityError:
         conn.close()
@@ -475,7 +476,7 @@ def assign_patient_to_provider(provider_id: int, user_id: int):
 def remove_patient_from_provider(provider_id: int, user_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('DELETE FROM provider_patients WHERE provider_id = ? AND user_id = ?', (provider_id, user_id))
+    cursor.execute('DELETE FROM provider_patients WHERE provider_id = %s AND user_id = %s', (provider_id, user_id))
     conn.commit()
     conn.close()
 
@@ -499,7 +500,7 @@ def get_provider_patients(provider_id: int):
 def get_patient_count(provider_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = ?', (provider_id,))
+    cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = %s', (provider_id,))
     count = cursor.fetchone()['cnt']
     conn.close()
     return count
@@ -525,7 +526,7 @@ def save_clinical_intake(user_id: int, provider_id: int, intake_data: dict):
 def get_clinical_intake(user_id: int, provider_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT intake_data, updated_at FROM patient_clinical_data WHERE user_id = ? AND provider_id = ?',
+    cursor.execute('SELECT intake_data, updated_at FROM patient_clinical_data WHERE user_id = %s AND provider_id = %s',
                    (user_id, provider_id))
     row = cursor.fetchone()
     conn.close()
@@ -557,7 +558,7 @@ def save_therapist_observations(user_id: int, provider_id: int, observations: di
 def get_therapist_observations(user_id: int, provider_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT observations, updated_at FROM therapist_observations WHERE user_id = ? AND provider_id = ?',
+    cursor.execute('SELECT observations, updated_at FROM therapist_observations WHERE user_id = %s AND provider_id = %s',
                    (user_id, provider_id))
     row = cursor.fetchone()
     conn.close()
@@ -574,7 +575,7 @@ def get_therapist_observations(user_id: int, provider_id: int):
 def create_task(title: str, description: str, assigned_by: int, assigned_to: int, due_date: str = None):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('INSERT INTO tasks (title, description, assigned_by, assigned_to, due_date) VALUES (?, ?, ?, ?, ?)',
+    cursor.execute('INSERT INTO tasks (title, description, assigned_by, assigned_to, due_date) VALUES (%s, %s, %s, %s, %s)',
                    (title, description, assigned_by, assigned_to, due_date))
     conn.commit()
     task_id = cursor.lastrowid
@@ -610,7 +611,7 @@ def update_task_status(task_id: int, user_id: int, status: str):
     conn = get_db_connection()
     cursor = conn.cursor()
     completed_at = datetime.utcnow().isoformat() if status == 'completed' else None
-    cursor.execute('UPDATE tasks SET status = ?, completed_at = ? WHERE id = ? AND assigned_to = ?',
+    cursor.execute('UPDATE tasks SET status = %s, completed_at = %s WHERE id = %s AND assigned_to = %s',
                    (status, completed_at, task_id, user_id))
     rows = cursor.rowcount
     conn.commit()
@@ -633,7 +634,7 @@ def send_reset_pin(email: str) -> bool:
     """Send a password reset PIN to the user's email"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT id, username, email_verified FROM users WHERE email = ?', (email,))
+    cursor.execute('SELECT id, username, email_verified FROM users WHERE email = %s', (email,))
     user = cursor.fetchone()
     if not user:
         conn.close()
@@ -644,7 +645,7 @@ def send_reset_pin(email: str) -> bool:
 
     pin = generate_pin()
     pin_expires = (datetime.utcnow() + timedelta(minutes=15)).isoformat()
-    cursor.execute('UPDATE users SET verification_token = ?, pin_expires_at = ? WHERE email = ?',
+    cursor.execute('UPDATE users SET verification_token = %s, pin_expires_at = %s WHERE email = %s',
                    (f"RESET:{pin}", pin_expires, email))
     conn.commit()
     conn.close()
@@ -685,7 +686,7 @@ def verify_reset_and_change_password(email: str, pin: str, new_password: str) ->
     """Verify reset PIN and change the password"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = ?', (email,))
+    cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = %s', (email,))
     row = cursor.fetchone()
     if not row:
         conn.close()
@@ -708,7 +709,7 @@ def verify_reset_and_change_password(email: str, pin: str, new_password: str) ->
 
     # Reset password
     new_hash = hash_password(new_password)
-    cursor.execute('UPDATE users SET password_hash = ?, verification_token = NULL, pin_expires_at = NULL WHERE email = ?',
+    cursor.execute('UPDATE users SET password_hash = %s, verification_token = NULL, pin_expires_at = NULL WHERE email = %s',
                    (new_hash, email))
     conn.commit()
     conn.close()
@@ -749,7 +750,7 @@ def save_profile_pic(user_id: int, pic_data: str):
     """Save base64 profile picture to database"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('UPDATE users SET profile_pic = ? WHERE id = ?', (pic_data, user_id))
+    cursor.execute('UPDATE users SET profile_pic = %s WHERE id = %s', (pic_data, user_id))
     conn.commit()
     conn.close()
 
@@ -757,7 +758,7 @@ def get_profile_pic(user_id: int):
     """Get profile picture for a user"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute('SELECT profile_pic FROM users WHERE id = ?', (user_id,))
+    cursor.execute('SELECT profile_pic FROM users WHERE id = %s', (user_id,))
     row = cursor.fetchone()
     conn.close()
     return row['profile_pic'] if row else None
@@ -767,7 +768,7 @@ def extract_knowledge_graph(user_id: int):
     """Extract a knowledge graph from a patient's chat messages"""
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT text, role, created_at FROM chat_messages WHERE user_id = ? ORDER BY created_at ASC", (user_id,))
+    cursor.execute("SELECT text, role, created_at FROM chat_messages WHERE user_id = %s ORDER BY created_at ASC", (user_id,))
     rows = cursor.fetchall()
     conn.close()
 

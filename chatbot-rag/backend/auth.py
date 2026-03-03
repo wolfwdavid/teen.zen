@@ -4,6 +4,7 @@ from jose import JWTError, jwt
 from typing import Optional
 from db import get_db_connection, dict_cursor
 import psycopg2
+from psycopg2.extras import RealDictCursor
 from pathlib import Path
 import secrets
 import hashlib
@@ -104,14 +105,14 @@ def decode_access_token(token: str):
 
 def create_user(username: str, email: str, password: str, role: str = "user", age: Optional[int] = None, phone: Optional[str] = None):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     try:
         password_hash = hash_password(password)
         pin = generate_pin()
         pin_expires = (datetime.utcnow() + timedelta(minutes=10)).isoformat()
         cursor.execute('''
             INSERT INTO users (username, email, password_hash, role, age, phone, verification_token, pin_expires_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
         ''', (username, email, password_hash, role, age, phone, pin, pin_expires))
         conn.commit()
         user_id = cursor.lastrowid
@@ -137,7 +138,7 @@ def create_user(username: str, email: str, password: str, role: str = "user", ag
 
 def verify_email_pin(email: str, pin: str) -> bool:
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = %s AND email_verified = 0', (email,))
     row = cursor.fetchone()
     if not row:
@@ -159,7 +160,7 @@ def verify_email_pin(email: str, pin: str) -> bool:
 
 def resend_verification_pin(email: str) -> bool:
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT username, email_verified FROM users WHERE email = %s', (email,))
     row = cursor.fetchone()
     if not row:
@@ -178,7 +179,7 @@ def resend_verification_pin(email: str) -> bool:
 
 def get_user_by_email(email: str):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT * FROM users WHERE email = %s', (email,))
     user = cursor.fetchone()
     conn.close()
@@ -187,7 +188,7 @@ def get_user_by_email(email: str):
 
 def get_user_by_id(user_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT * FROM users WHERE id = %s', (user_id,))
     user = cursor.fetchone()
     conn.close()
@@ -201,7 +202,7 @@ def authenticate_user(email: str, password: str):
     if not verify_password(password, user['password_hash']):
         return None
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('UPDATE users SET last_login = %s WHERE id = %s', (datetime.utcnow(), user['id']))
     conn.commit()
     conn.close()
@@ -232,13 +233,13 @@ def get_or_create_google_user(google_info: dict):
     user = get_user_by_email(email)
     if user:
         conn = get_db_connection()
-        cursor = conn.cursor()
+        cursor = conn.cursor(cursor_factory=RealDictCursor)
         cursor.execute('UPDATE users SET last_login = %s WHERE id = %s', (datetime.utcnow(), user['id']))
         conn.commit()
         conn.close()
         return user
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     username = google_info.get('given_name', '').lower() or email.split('@')[0]
     username = ''.join(c for c in username if c.isalnum())
     base_username = username
@@ -265,7 +266,7 @@ def get_or_create_google_user(google_info: dict):
 
 def verify_email_token(token: str):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('UPDATE users SET email_verified = 1, verification_token = NULL WHERE verification_token = %s', (token,))
     rows_affected = cursor.rowcount
     conn.commit()
@@ -290,7 +291,7 @@ def get_current_quarter():
 
 def save_chat_message(user_id: int, role: str, text: str, sources: str = None, timing: float = None):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('INSERT INTO chat_messages (user_id, role, text, sources, timing) VALUES (%s, %s, %s, %s, %s)',
                    (user_id, role, text, sources, timing))
     conn.commit()
@@ -302,10 +303,10 @@ def get_chat_history(user_id: int, year: int = None, quarter: int = None):
         year, quarter = get_current_quarter()
     start_date, end_date = get_quarter_dates(year, quarter)
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT role, text, sources, timing, created_at FROM chat_messages
-        WHERE user_id = ? AND hidden = 0 AND date(created_at) >= ? AND date(created_at) <= ?
+        WHERE user_id = %s AND hidden = 0 AND date(created_at) >= %s AND date(created_at) <= %s
         ORDER BY created_at ASC
     ''', (user_id, start_date, end_date))
     rows = cursor.fetchall()
@@ -324,14 +325,14 @@ def get_chat_history(user_id: int, year: int = None, quarter: int = None):
 
 def get_available_quarters(user_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT DISTINCT strftime('%Y', created_at) as year,
             CASE WHEN cast(strftime('%m', created_at) as integer) <= 3 THEN 1
                  WHEN cast(strftime('%m', created_at) as integer) <= 6 THEN 2
                  WHEN cast(strftime('%m', created_at) as integer) <= 9 THEN 3
                  ELSE 4 END as quarter, COUNT(*) as count
-        FROM chat_messages WHERE user_id = ?
+        FROM chat_messages WHERE user_id = %s
         GROUP BY year, quarter ORDER BY year DESC, quarter DESC
     ''', (user_id,))
     rows = cursor.fetchall()
@@ -343,7 +344,7 @@ def clear_chat_history(user_id: int):
     year, quarter = get_current_quarter()
     start_date, end_date = get_quarter_dates(year, quarter)
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('UPDATE chat_messages SET hidden = 1 WHERE user_id = %s AND date(created_at) >= %s AND date(created_at) <= %s',
                    (user_id, start_date, end_date))
     conn.commit()
@@ -353,10 +354,10 @@ def clear_chat_history(user_id: int):
 def get_chat_history_for_archive(user_id: int, year: int, quarter: int):
     start_date, end_date = get_quarter_dates(year, quarter)
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT role, text, sources, timing, created_at FROM chat_messages
-        WHERE user_id = ? AND date(created_at) >= ? AND date(created_at) <= ?
+        WHERE user_id = %s AND date(created_at) >= %s AND date(created_at) <= %s
         ORDER BY created_at ASC
     ''', (user_id, start_date, end_date))
     rows = cursor.fetchall()
@@ -366,7 +367,7 @@ def get_chat_history_for_archive(user_id: int, year: int, quarter: int):
 
 def create_archive_record(user_id: int, provider_id: int, quarter: int, year: int, message_count: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('INSERT INTO chat_archives (user_id, provider_id, quarter, year, message_count) VALUES (%s, %s, %s, %s, %s)',
                    (user_id, provider_id, f"Q{quarter}", year, message_count))
     conn.commit()
@@ -377,11 +378,11 @@ def create_archive_record(user_id: int, provider_id: int, quarter: int, year: in
 
 def get_archives_for_provider(provider_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT ca.*, u.username as user_name, u.email as user_email
         FROM chat_archives ca JOIN users u ON ca.user_id = u.id
-        WHERE ca.provider_id = ? ORDER BY ca.year DESC, ca.quarter DESC
+        WHERE ca.provider_id = %s ORDER BY ca.year DESC, ca.quarter DESC
     ''', (provider_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -390,7 +391,7 @@ def get_archives_for_provider(provider_id: int):
 
 def get_provider_for_user(user_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT provider_id FROM provider_patients WHERE user_id = %s LIMIT 1', (user_id,))
     row = cursor.fetchone()
     conn.close()
@@ -400,12 +401,12 @@ def get_provider_for_user(user_id: int):
 def get_provider_info_for_user(user_id: int):
     """Get the provider's name/email for a given patient"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT u.id, u.username, u.email, u.profile_pic
         FROM provider_patients pp
         JOIN users u ON u.id = pp.provider_id
-        WHERE pp.user_id = ?
+        WHERE pp.user_id = %s
         LIMIT 1
     ''', (user_id,))
     row = cursor.fetchone()
@@ -420,7 +421,7 @@ def get_provider_info_for_user(user_id: int):
 def auto_assign_patient(user_id: int):
     """Auto-assign a new user to a provider with fewer than MAX patients"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
     # Check if already assigned
     cursor.execute('SELECT id FROM provider_patients WHERE user_id = %s', (user_id,))
@@ -455,7 +456,7 @@ def auto_assign_patient(user_id: int):
 def assign_patient_to_provider(provider_id: int, user_id: int):
     """Manually assign a patient to a provider"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
 
     # Check capacity
     cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = %s', (provider_id,))
@@ -475,7 +476,7 @@ def assign_patient_to_provider(provider_id: int, user_id: int):
 
 def remove_patient_from_provider(provider_id: int, user_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('DELETE FROM provider_patients WHERE provider_id = %s AND user_id = %s', (provider_id, user_id))
     conn.commit()
     conn.close()
@@ -484,12 +485,12 @@ def remove_patient_from_provider(provider_id: int, user_id: int):
 def get_provider_patients(provider_id: int):
     """Get all patients assigned to a provider"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT u.id, u.username, u.email, u.age, u.created_at, u.last_login, u.profile_pic, pp.assigned_at
         FROM provider_patients pp
         JOIN users u ON pp.user_id = u.id
-        WHERE pp.provider_id = ?
+        WHERE pp.provider_id = %s
         ORDER BY u.username ASC
     ''', (provider_id,))
     rows = cursor.fetchall()
@@ -499,7 +500,7 @@ def get_provider_patients(provider_id: int):
 
 def get_patient_count(provider_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT COUNT(*) as cnt FROM provider_patients WHERE provider_id = %s', (provider_id,))
     count = cursor.fetchone()['cnt']
     conn.close()
@@ -510,14 +511,14 @@ def get_patient_count(provider_id: int):
 
 def save_clinical_intake(user_id: int, provider_id: int, intake_data: dict):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     data_json = json.dumps(intake_data)
     now = datetime.utcnow().isoformat()
     cursor.execute('''
         INSERT INTO patient_clinical_data (user_id, provider_id, intake_data, updated_at)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT(user_id, provider_id)
-        DO UPDATE SET intake_data = ?, updated_at = ?
+        DO UPDATE SET intake_data = %s, updated_at = %s
     ''', (user_id, provider_id, data_json, now, data_json, now))
     conn.commit()
     conn.close()
@@ -525,7 +526,7 @@ def save_clinical_intake(user_id: int, provider_id: int, intake_data: dict):
 
 def get_clinical_intake(user_id: int, provider_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT intake_data, updated_at FROM patient_clinical_data WHERE user_id = %s AND provider_id = %s',
                    (user_id, provider_id))
     row = cursor.fetchone()
@@ -542,14 +543,14 @@ def get_clinical_intake(user_id: int, provider_id: int):
 
 def save_therapist_observations(user_id: int, provider_id: int, observations: dict):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     obs_json = json.dumps(observations)
     now = datetime.utcnow().isoformat()
     cursor.execute('''
         INSERT INTO therapist_observations (user_id, provider_id, observations, updated_at)
-        VALUES (?, ?, ?, ?)
+        VALUES (%s, %s, %s, %s)
         ON CONFLICT(user_id, provider_id)
-        DO UPDATE SET observations = ?, updated_at = ?
+        DO UPDATE SET observations = %s, updated_at = %s
     ''', (user_id, provider_id, obs_json, now, obs_json, now))
     conn.commit()
     conn.close()
@@ -557,7 +558,7 @@ def save_therapist_observations(user_id: int, provider_id: int, observations: di
 
 def get_therapist_observations(user_id: int, provider_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT observations, updated_at FROM therapist_observations WHERE user_id = %s AND provider_id = %s',
                    (user_id, provider_id))
     row = cursor.fetchone()
@@ -574,7 +575,7 @@ def get_therapist_observations(user_id: int, provider_id: int):
 
 def create_task(title: str, description: str, assigned_by: int, assigned_to: int, due_date: str = None):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('INSERT INTO tasks (title, description, assigned_by, assigned_to, due_date) VALUES (%s, %s, %s, %s, %s)',
                    (title, description, assigned_by, assigned_to, due_date))
     conn.commit()
@@ -585,10 +586,10 @@ def create_task(title: str, description: str, assigned_by: int, assigned_to: int
 
 def get_tasks_for_user(user_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT t.*, u.username as assigned_by_name FROM tasks t
-        JOIN users u ON t.assigned_by = u.id WHERE t.assigned_to = ? ORDER BY t.created_at DESC
+        JOIN users u ON t.assigned_by = u.id WHERE t.assigned_to = %s ORDER BY t.created_at DESC
     ''', (user_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -597,10 +598,10 @@ def get_tasks_for_user(user_id: int):
 
 def get_tasks_assigned_by(provider_id: int):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('''
         SELECT t.*, u.username as assigned_to_name FROM tasks t
-        JOIN users u ON t.assigned_to = u.id WHERE t.assigned_by = ? ORDER BY t.created_at DESC
+        JOIN users u ON t.assigned_to = u.id WHERE t.assigned_by = %s ORDER BY t.created_at DESC
     ''', (provider_id,))
     rows = cursor.fetchall()
     conn.close()
@@ -609,7 +610,7 @@ def get_tasks_assigned_by(provider_id: int):
 
 def update_task_status(task_id: int, user_id: int, status: str):
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     completed_at = datetime.utcnow().isoformat() if status == 'completed' else None
     cursor.execute('UPDATE tasks SET status = %s, completed_at = %s WHERE id = %s AND assigned_to = %s',
                    (status, completed_at, task_id, user_id))
@@ -621,7 +622,7 @@ def update_task_status(task_id: int, user_id: int, status: str):
 
 def get_all_users_for_provider():
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT id, username, email, role FROM users WHERE role = 'user' AND email_verified = 1")
     rows = cursor.fetchall()
     conn.close()
@@ -633,7 +634,7 @@ def get_all_users_for_provider():
 def send_reset_pin(email: str) -> bool:
     """Send a password reset PIN to the user's email"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT id, username, email_verified FROM users WHERE email = %s', (email,))
     user = cursor.fetchone()
     if not user:
@@ -685,7 +686,7 @@ def send_reset_pin(email: str) -> bool:
 def verify_reset_and_change_password(email: str, pin: str, new_password: str) -> bool:
     """Verify reset PIN and change the password"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT verification_token, pin_expires_at FROM users WHERE email = %s', (email,))
     row = cursor.fetchone()
     if not row:
@@ -749,7 +750,7 @@ THERAPY_TOPICS = {
 def save_profile_pic(user_id: int, pic_data: str):
     """Save base64 profile picture to database"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('UPDATE users SET profile_pic = %s WHERE id = %s', (pic_data, user_id))
     conn.commit()
     conn.close()
@@ -757,7 +758,7 @@ def save_profile_pic(user_id: int, pic_data: str):
 def get_profile_pic(user_id: int):
     """Get profile picture for a user"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute('SELECT profile_pic FROM users WHERE id = %s', (user_id,))
     row = cursor.fetchone()
     conn.close()
@@ -767,7 +768,7 @@ def get_profile_pic(user_id: int):
 def extract_knowledge_graph(user_id: int):
     """Extract a knowledge graph from a patient's chat messages"""
     conn = get_db_connection()
-    cursor = conn.cursor()
+    cursor = conn.cursor(cursor_factory=RealDictCursor)
     cursor.execute("SELECT text, role, created_at FROM chat_messages WHERE user_id = %s ORDER BY created_at ASC", (user_id,))
     rows = cursor.fetchall()
     conn.close()

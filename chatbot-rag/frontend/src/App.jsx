@@ -3776,7 +3776,7 @@ export default function App() {
 
       {/* ===== GUEST PROMPT COUNTER (shown when not logged in, in chat view) ===== */}
       {!authToken && view === 'chat' && (
-        <div className="fixed bottom-4 left-4 z-40 rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 backdrop-blur-sm shadow-lg">
+        <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 rounded-full bg-zinc-900/90 border border-zinc-800 px-4 py-2 backdrop-blur-sm shadow-lg">
           <p className="text-[11px] text-zinc-400">
             <span className={`font-bold ${guestPrompts >= GUEST_LIMIT - 5 ? 'text-amber-400' : 'text-indigo-400'}`}>
               {GUEST_LIMIT - guestPrompts}

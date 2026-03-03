@@ -1898,10 +1898,10 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className={`flex h-screen w-full flex-col font-sans selection:bg-indigo-500/30 overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-gray-50 text-zinc-900'}`}
+    <div className={`flex h-screen w-full flex-col font-sans selection:bg-indigo-500/30 overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-[#F7F9FB] text-[#1F2933]'}`}
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       {/* Navbar */}
-      <nav className={`relative border-b backdrop-blur-md shrink-0 ${darkMode ? 'border-zinc-900 bg-zinc-950/50' : 'border-zinc-200 bg-white/80'}`}>
+      <nav className={`relative border-b backdrop-blur-md shrink-0 ${darkMode ? 'border-zinc-900 bg-zinc-950/50' : 'border-[#2EC4B6]/20 bg-white/90'}`}>
         <div className="flex h-16 items-center justify-between px-6">
           <div className="flex items-center gap-3">
             {/* Robot icon kept for reference: <Bot className="w-5 h-5 text-white" /> */}
@@ -1921,39 +1921,39 @@ export default function App() {
 
           {/* Desktop menu */}
           <div className="hidden md:flex items-center gap-2">
-            <button onClick={() => navTo('chat')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'chat' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
+            <button onClick={() => navTo('chat')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'chat' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
               <MessageSquare size={14} /> Chat
             </button>
             {currentUser && (
-              <button onClick={() => navTo('profile')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'profile' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
+              <button onClick={() => navTo('profile')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'profile' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
                 <UserCircle size={14} /> Profile
               </button>
             )}
             {!currentUser ? (
               <>
-                <button onClick={() => navTo('register')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'register' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
+                <button onClick={() => navTo('register')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'register' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
                   <UserPlus size={14} /> Register
                 </button>
-                <button onClick={() => navTo('login')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'login' ? 'bg-zinc-800 border-zinc-700 text-white' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
+                <button onClick={() => navTo('login')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'login' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
                   <LogIn size={14} /> Sign In
                 </button>
               </>
             ) : (
-              <button onClick={handleLogout} className="flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent text-zinc-400 hover:text-zinc-200">
+              <button onClick={handleLogout} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent ${darkMode ? 'text-zinc-400 hover:text-zinc-200' : 'text-[#1F2933]/60 hover:text-[#1F2933]'}`}>
                 <User size={14} /> {capitalize(currentUser.username)} (Sign Out)
               </button>
             )}
-            <button onClick={() => navTo('debug')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
+            <button onClick={() => navTo('debug')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'debug' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'bg-[#9D8DF1]/10 border-[#9D8DF1]/40 text-[#9D8DF1]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
               <Terminal size={14} /> Debug
             </button>
             <button onClick={() => setDarkMode(d => !d)} aria-label="Toggle dark mode"
-              className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${darkMode ? 'border-zinc-700 bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100'}`}>
+              className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${darkMode ? 'border-zinc-700 bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'border-[#2EC4B6]/40 bg-[#F7F9FB] text-[#2EC4B6] hover:bg-[#2EC4B6]/10'}`}>
               {darkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
           </div>
 
           {/* Mobile hamburger */}
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className={`md:hidden flex h-10 w-10 items-center justify-center rounded-xl transition-all ${darkMode ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className={`md:hidden flex h-10 w-10 items-center justify-center rounded-xl transition-all ${darkMode ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200' : 'text-[#1F2933] hover:bg-[#2EC4B6]/10'}`}>
             {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
@@ -1962,33 +1962,33 @@ export default function App() {
         {mobileMenuOpen && (
           <div className={`md:hidden border-t backdrop-blur-xl ${darkMode ? 'border-zinc-900 bg-zinc-950/95' : 'border-zinc-200 bg-white/95'}`}>
             <div className="flex flex-col p-3 gap-1">
-              <button onClick={() => navTo('chat')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
+              <button onClick={() => navTo('chat')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'chat' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
                 <MessageSquare size={16} /> Chat
               </button>
               {currentUser && (
-                <button onClick={() => navTo('profile')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'profile' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
+                <button onClick={() => navTo('profile')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'profile' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
                   <UserCircle size={16} /> Profile
                 </button>
               )}
               {!currentUser ? (
                 <>
-                  <button onClick={() => navTo('register')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'register' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
+                  <button onClick={() => navTo('register')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'register' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
                     <UserPlus size={16} /> Register
                   </button>
-                  <button onClick={() => navTo('login')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'login' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
+                  <button onClick={() => navTo('login')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'login' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
                     <LogIn size={16} /> Sign In
                   </button>
                 </>
               ) : (
-                <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider text-zinc-400 hover:bg-zinc-900">
+                <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5'}`}>
                   <User size={16} /> Sign Out
                 </button>
               )}
-              <button onClick={() => navTo('debug')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'debug' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-900'}`}>
+              <button onClick={() => navTo('debug')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'debug' ? (darkMode ? 'bg-zinc-800 text-indigo-400' : 'bg-[#9D8DF1]/10 text-[#9D8DF1]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
                 <Terminal size={16} /> Debug
               </button>
               <button onClick={() => { setDarkMode(d => !d); setMobileMenuOpen(false); }}
-                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${darkMode ? 'text-amber-400 hover:bg-zinc-900' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${darkMode ? 'text-amber-400 hover:bg-zinc-900' : 'text-[#2EC4B6] hover:bg-[#2EC4B6]/10'}`}>
                 {darkMode ? <Sun size={16} /> : <Moon size={16} />}
                 {darkMode ? 'Light Mode' : 'Dark Mode'}
               </button>
@@ -2039,14 +2039,15 @@ export default function App() {
 
                 {messages.length === 0 ? (
                   <div className="flex flex-col items-center justify-center py-20 text-center">
-                    <div className="mb-6 flex h-24 w-24 items-center justify-center rounded-full bg-zinc-900 ring-1 ring-zinc-800 shadow-inner">
-                      <Bot className="w-12 h-12 text-zinc-800" />
+                    {/* Robot icon kept for reference: <Bot className="w-12 h-12 text-zinc-800" /> */}
+                    <div className={`mb-6 flex h-24 w-24 items-center justify-center rounded-full shadow-lg ${darkMode ? 'bg-zinc-900 ring-1 ring-zinc-800' : 'bg-white ring-2 ring-[#2EC4B6]/20 shadow-[#2EC4B6]/10'}`}>
+                      <img src={darkMode ? teenzenLogoDark : teenzenLogoLight} alt="Teen Zen" className="h-14 w-14 object-contain" />
                     </div>
-                    <h2 className="text-2xl font-bold text-zinc-100">How can I help you today?</h2>
-                    <p className="mt-2 max-w-md text-zinc-500 text-sm">AI-guided emotional growth with human support when you need it.</p>
-                    {!currentUser && <p className="mt-4 text-xs text-zinc-600">Sign in to save your chat history.</p>}
+                    <h2 className={`text-2xl font-bold ${darkMode ? 'text-zinc-100' : 'text-[#1F2933]'}`}>How can I help you today?</h2>
+                    <p className={`mt-2 max-w-md text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>AI-guided emotional growth with human support when you need it.</p>
+                    {!currentUser && <p className={`mt-4 text-xs ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>Sign in to save your chat history.</p>}
                     {currentUser && viewingQuarter && (
-                      <p className="mt-4 text-xs text-zinc-600">No messages this quarter.</p>
+                      <p className={`mt-4 text-xs ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>No messages this quarter.</p>
                     )}
                   </div>
                 ) : (
@@ -2078,11 +2079,11 @@ export default function App() {
               </div>
             </div>
 
-            <div className="bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent pt-10 pb-6 shrink-0">
+            <div className={`pt-10 pb-6 shrink-0 ${darkMode ? 'bg-gradient-to-t from-zinc-950 via-zinc-950 to-transparent' : 'bg-gradient-to-t from-[#F7F9FB] via-[#F7F9FB] to-transparent'}`}>
               <div className="mx-auto max-w-3xl px-4">
-                <form onSubmit={handleSendMessage} className="relative flex items-center rounded-2xl border border-zinc-800 bg-zinc-900/50 p-1.5 shadow-2xl focus-within:border-indigo-500/50 transition-all ring-1 ring-white/5">
+                <form onSubmit={handleSendMessage} className={`relative flex items-center rounded-2xl border p-1.5 shadow-xl focus-within:ring-2 transition-all ${darkMode ? 'border-zinc-800 bg-zinc-900/50 focus-within:border-[#2EC4B6]/50 ring-white/5' : 'border-[#2EC4B6]/30 bg-white focus-within:border-[#2EC4B6] focus-within:ring-[#2EC4B6]/10'}`}>
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.py,.js,.html,.css" />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Upload file" className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors" title="Upload file">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Upload file" className={`flex h-10 w-10 items-center justify-center rounded-xl transition-colors ${darkMode ? 'text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800' : 'text-[#2EC4B6]/60 hover:text-[#2EC4B6] hover:bg-[#2EC4B6]/10'}`} title="Upload file">
                     <Paperclip size={18} />
                   </button>
                   <div className="flex-1 flex flex-col">
@@ -2097,14 +2098,14 @@ export default function App() {
                       placeholder={isLoading ? "Generating response..." : "How are you feeling today?"}
                       rows={1}
                       onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
-                      className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600 resize-none overflow-y-auto max-h-[150px]" />
+                      className={`flex-1 bg-transparent px-4 py-3 text-sm outline-none resize-none overflow-y-auto max-h-[150px] ${darkMode ? 'placeholder:text-zinc-600' : 'placeholder:text-[#1F2933]/40'}`} />
                   </div>
                   <div className="flex items-center gap-1">
                     {isLoading && (
-                      <button type="button" onClick={handleStop} aria-label="Stop generating" className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800"><StopCircle size={20} /></button>
+                      <button type="button" onClick={handleStop} aria-label="Stop generating" className={`flex h-10 w-10 items-center justify-center rounded-xl ${darkMode ? 'text-zinc-400 hover:bg-zinc-800' : 'text-[#FF6B6B] hover:bg-[#FF6B6B]/10'}`}><StopCircle size={20} /></button>
                     )}
                     <button type="submit" disabled={!input.trim() || isLoading}
-                      className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${!input.trim() || isLoading ? 'bg-zinc-800 text-zinc-600' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500'}`}>
+                      className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${!input.trim() || isLoading ? (darkMode ? 'bg-zinc-800 text-zinc-600' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]/30') : 'bg-[#2EC4B6] text-white shadow-lg shadow-[#2EC4B6]/20 hover:bg-[#2EC4B6]/90'}`}>
                       <Send size={18} />
                     </button>
                   </div>
@@ -2114,11 +2115,11 @@ export default function App() {
                     <ShieldAlert size={12} /> <span className="font-bold uppercase tracking-wider">Connection issue — please try again:</span> <span className="truncate">{streamError}</span>
                   </div>
                 )}
-                <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-3">
-                  <p className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">&copy; 2026 TEEN ZEN</p>
+                <div className={`mt-4 flex items-center justify-between border-t pt-3 ${darkMode ? 'border-zinc-900' : 'border-[#2EC4B6]/15'}`}>
+                  <p className={`text-[10px] font-medium uppercase tracking-widest ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>&copy; 2026 TEEN ZEN</p>
                   <div className="flex gap-4">
-                    <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><ShieldCheck size={10}/> SSL Encrypted</span>
-                    <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><Globe size={10}/> Cloud Context</span>
+                    <span className={`text-[10px] font-medium uppercase tracking-widest flex items-center gap-1 ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}><ShieldCheck size={10}/> SSL Encrypted</span>
+                    <span className={`text-[10px] font-medium uppercase tracking-widest flex items-center gap-1 ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}><Globe size={10}/> Cloud Context</span>
                   </div>
                 </div>
               </div>

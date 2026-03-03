@@ -89,6 +89,36 @@ const ChatMessage = ({ type, text, sources = [], timing, error, profilePic, crea
   );
 };
 
+// --- Error Boundary ---
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false };
+  }
+  static getDerivedStateFromError() {
+    return { hasError: true };
+  }
+  componentDidCatch(error, info) {
+    console.error('App render error:', error, info);
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', height: '100vh', alignItems: 'center', justifyContent: 'center', background: '#09090b', color: '#f4f4f5', flexDirection: 'column', gap: '16px', padding: '32px', textAlign: 'center' }}>
+          <div style={{ fontSize: '48px' }}>⚠️</div>
+          <h2 style={{ fontSize: '20px', fontWeight: 'bold' }}>Something went wrong</h2>
+          <p style={{ color: '#71717a', fontSize: '14px', maxWidth: '360px' }}>An unexpected error occurred. Refresh the page to continue.</p>
+          <button onClick={() => window.location.reload()}
+            style={{ marginTop: '8px', padding: '12px 24px', borderRadius: '12px', background: '#4f46e5', color: 'white', fontWeight: 'bold', fontSize: '14px', border: 'none', cursor: 'pointer' }}>
+            Refresh Page
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 export default function App() {
   const [view, setView] = useState('chat');
   const [messages, setMessages] = useState([]);
@@ -111,6 +141,11 @@ export default function App() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   // === TEEN ZEN TABS & FEATURES ===
   const [activeTab, setActiveTab] = useState('home');
+  const [darkMode, setDarkMode] = useState(() => {
+    const saved = localStorage.getItem('tz_darkMode');
+    return saved !== null ? JSON.parse(saved) : true;
+  });
+  useEffect(() => { localStorage.setItem('tz_darkMode', JSON.stringify(darkMode)); }, [darkMode]);
   const [dailyMood, setDailyMood] = useState(null);
   const [moodHistory, setMoodHistory] = useState([]);
   const [streak, setStreak] = useState(0);
@@ -154,7 +189,8 @@ export default function App() {
   useEffect(() => {
     const saved = localStorage.getItem('tz_mood_history');
     if (saved) {
-      const history = JSON.parse(saved);
+      let history;
+      try { history = JSON.parse(saved); } catch (e) { console.error('Mood history parse error:', e); history = []; }
       setMoodHistory(history);
       // Check if mood was logged today
       const today = new Date().toDateString();
@@ -174,7 +210,7 @@ export default function App() {
     }
     // Load journal
     const savedJ = localStorage.getItem('tz_journal');
-    if (savedJ) setJournalEntries(JSON.parse(savedJ));
+    if (savedJ) { try { setJournalEntries(JSON.parse(savedJ)); } catch (e) { console.error('Journal parse error:', e); } }
     // Set random reflection
     setReflectionPrompt(JOURNAL_PROMPTS[Math.floor(Math.random() * JOURNAL_PROMPTS.length)]);
   }, []);
@@ -235,6 +271,7 @@ export default function App() {
   });
   const [showGuestModal, setShowGuestModal] = useState(false);
   const GUEST_LIMIT = 25;
+  const MAX_PATIENTS = 15;
 
   // Registration
   const [showPassword, setShowPassword] = useState(false);
@@ -507,7 +544,7 @@ export default function App() {
             const data = await res.json();
             if (data.profile_pic) { setProfilePic(data.profile_pic); return; }
           }
-        } catch {}
+        } catch (e) { console.error('Profile pic fetch error:', e); }
         const savedPic = window.localStorage?.getItem(`profilePic_${currentUser.id}`);
         if (savedPic) setProfilePic(savedPic);
         else setProfilePic(null);
@@ -515,10 +552,10 @@ export default function App() {
 
       const savedData = window.localStorage?.getItem(`profileData_${currentUser.id}`);
       if (savedData) {
-        try { setProfileData(prev => ({ ...prev, ...JSON.parse(savedData) })); } catch {}
+        try { setProfileData(prev => ({ ...prev, ...JSON.parse(savedData) })); } catch (e) { console.error('Profile data parse error:', e); }
       }
     }
-  }, [currentUser]);
+  }, [currentUser, authToken]);
 
   const handleProfilePicChange = (e) => {
     const file = e.target.files?.[0];
@@ -528,26 +565,26 @@ export default function App() {
     reader.onload = async (ev) => {
       const dataUrl = ev.target.result;
       setProfilePic(dataUrl);
-      try { window.localStorage?.setItem(`profilePic_${currentUser.id}`, dataUrl); } catch {}
+      try { window.localStorage?.setItem(`profilePic_${currentUser.id}`, dataUrl); } catch (e) { console.error('LocalStorage write error:', e); }
       // Save to backend
       try {
         await fetch(joinUrl(API_BASE, "/api/profile/pic"), {
           method: "POST", headers: authHeaders(authToken),
           body: JSON.stringify({ pic: dataUrl })
         });
-      } catch {}
+      } catch (e) { console.error('Profile pic save error:', e); }
     };
     reader.readAsDataURL(file);
   };
 
   const removeProfilePic = async () => {
     setProfilePic(null);
-    try { window.localStorage?.removeItem(`profilePic_${currentUser.id}`); } catch {}
+    try { window.localStorage?.removeItem(`profilePic_${currentUser.id}`); } catch (e) { console.error('LocalStorage remove error:', e); }
     try {
       await fetch(joinUrl(API_BASE, "/api/profile/pic"), {
         method: "DELETE", headers: authHeaders(authToken)
       });
-    } catch {}
+    } catch (e) { console.error('Profile pic delete error:', e); }
   };
 
   // === VERIFICATION FUNCTIONS ===
@@ -680,7 +717,7 @@ export default function App() {
       if (videoBlob) formData.append('video', videoBlob, 'verification.webm');
       const res = await fetch(joinUrl(API_BASE, '/api/verification/upload'), {
         method: 'POST',
-        headers: { 'Authorization': authToken },
+        headers: { 'Authorization': `Bearer ${authToken}` },
         body: formData
       });
       if (res.ok) {
@@ -910,7 +947,7 @@ export default function App() {
     setMessages([]);
     setTasks([]);
     setView('login');
-    try { localStorage.removeItem('tz_token'); localStorage.removeItem('tz_user'); } catch {}
+    try { localStorage.removeItem('tz_token'); localStorage.removeItem('tz_user'); } catch (e) { console.error('LocalStorage clear error:', e); }
   };
 
   // Persist auth to localStorage
@@ -1082,10 +1119,14 @@ export default function App() {
     } catch (e) { setTherapistObs({}); }
   };
 
+  const chatHistoryAbortRef = useRef(null);
   const loadPatientChatHistory = async (patientId, searchQuery = '') => {
+    if (chatHistoryAbortRef.current) chatHistoryAbortRef.current.abort();
+    const ac = new AbortController();
+    chatHistoryAbortRef.current = ac;
     setChatHistoryLoading(true);
     try {
-      const res = await fetch(joinUrl(API_BASE, `/api/chat/history?user_id=${patientId}`), { headers: authHeaders(authToken) });
+      const res = await fetch(joinUrl(API_BASE, `/api/chat/history?user_id=${patientId}`), { headers: authHeaders(authToken), signal: ac.signal });
       if (res.ok) {
         const data = await res.json();
         let msgs = data.messages || [];
@@ -1095,8 +1136,11 @@ export default function App() {
         }
         setPatientChatHistory(msgs);
       }
-    } catch (e) { setPatientChatHistory([]); }
-    setChatHistoryLoading(false);
+    } catch (e) {
+      if (e?.name !== 'AbortError') { console.error('Chat history load error:', e); setPatientChatHistory([]); }
+    } finally {
+      setChatHistoryLoading(false);
+    }
   };
 
   // Channel definitions for Discord-style sidebar
@@ -1571,11 +1615,11 @@ export default function App() {
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-6 pb-24">
       {/* Greeting */}
       <div className="text-center">
-        <h1 className="text-2xl font-bold" style={{color: '#1F2933'}}>
+        <h1 className="text-2xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>
           {(() => { const h = new Date().getHours(); return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening'; })()}
-          {username ? `, ${username}` : ''} 👋
+          {currentUser?.username ? `, ${currentUser.username}` : ''} 👋
         </h1>
-        <p className="text-sm mt-1" style={{color: '#6B7C8F'}}>How are you feeling today?</p>
+        <p className="text-sm mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>How are you feeling today?</p>
       </div>
 
       {/* Streak */}
@@ -1587,8 +1631,8 @@ export default function App() {
       )}
 
       {/* Mood Check-in */}
-      <div className="rounded-2xl p-6 shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
-        <h3 className="font-semibold mb-4 text-center" style={{color: '#1F2933'}}>
+      <div className="rounded-2xl p-6 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
+        <h3 className="font-semibold mb-4 text-center" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>
           {dailyMood ? "Today's mood" : 'Daily Mood Check-in'}
         </h3>
         <div className="flex justify-center gap-3">
@@ -1610,7 +1654,7 @@ export default function App() {
       {/* Reflection Prompt */}
       <div className="rounded-2xl p-5 shadow-sm" style={{background: 'linear-gradient(135deg, #2EC4B620, #9D8DF120)', border: '1px solid #E8ECF0'}}>
         <p className="text-xs font-semibold mb-2" style={{color: '#2EC4B6'}}>💭 DAILY REFLECTION</p>
-        <p className="text-sm italic" style={{color: '#1F2933'}}>"{reflectionPrompt}"</p>
+        <p className="text-sm italic" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>"{reflectionPrompt}"</p>
         <button onClick={() => { setActiveTab('journal'); setShowJournalPrompt(true); }}
           className="mt-3 text-xs font-semibold px-4 py-2 rounded-full transition-all hover:opacity-80"
           style={{background: '#2EC4B6', color: 'white'}}>
@@ -1622,30 +1666,30 @@ export default function App() {
       <div className="grid grid-cols-2 gap-3">
         <button onClick={() => setActiveTab('chat')}
           className="rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all"
-          style={{background: 'white', border: '1px solid #E8ECF0'}}>
+          style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
           <span className="text-2xl">💬</span>
-          <p className="font-semibold text-sm mt-2" style={{color: '#1F2933'}}>Start Chat</p>
-          <p className="text-[10px] mt-1" style={{color: '#6B7C8F'}}>Talk to Teen Zen AI</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Start Chat</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Talk to Teen Zen AI</p>
         </button>
         <button onClick={() => setActiveTab('journal')}
           className="rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all"
-          style={{background: 'white', border: '1px solid #E8ECF0'}}>
+          style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
           <span className="text-2xl">📝</span>
-          <p className="font-semibold text-sm mt-2" style={{color: '#1F2933'}}>Journal</p>
-          <p className="text-[10px] mt-1" style={{color: '#6B7C8F'}}>Write your thoughts</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Journal</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Write your thoughts</p>
         </button>
         <button onClick={() => setActiveTab('progress')}
           className="rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all"
-          style={{background: 'white', border: '1px solid #E8ECF0'}}>
+          style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
           <span className="text-2xl">📊</span>
-          <p className="font-semibold text-sm mt-2" style={{color: '#1F2933'}}>Progress</p>
-          <p className="text-[10px] mt-1" style={{color: '#6B7C8F'}}>View your journey</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Progress</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>View your journey</p>
         </button>
         <div className="rounded-2xl p-4 text-left shadow-sm"
           style={{background: 'linear-gradient(135deg, #9D8DF130, #FF6B6B15)', border: '1px solid #E8ECF0'}}>
           <span className="text-2xl">🧘</span>
-          <p className="font-semibold text-sm mt-2" style={{color: '#1F2933'}}>Breathe</p>
-          <p className="text-[10px] mt-1" style={{color: '#6B7C8F'}}>Coming soon</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Breathe</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Coming soon</p>
         </div>
       </div>
 
@@ -1657,7 +1701,7 @@ export default function App() {
       </div>
 
       {/* Disclaimer */}
-      <p className="text-center text-[10px] px-4" style={{color: '#9CA8B5'}}>
+      <p className="text-center text-[10px] px-4" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>
         Teen Zen is an AI-guided emotional growth platform. It is not a substitute for professional medical advice, diagnosis, or treatment.
       </p>
     </div>
@@ -1666,15 +1710,15 @@ export default function App() {
   // === JOURNAL TAB ===
   const renderJournalTab = () => (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-24">
-      <h2 className="text-xl font-bold" style={{color: '#1F2933'}}>My Journal</h2>
+      <h2 className="text-xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>My Journal</h2>
 
       {/* Write Entry */}
-      <div className="rounded-2xl p-5 shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
+      <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
         {showJournalPrompt && (
           <div className="mb-3 p-3 rounded-xl" style={{background: '#2EC4B610'}}>
             <p className="text-xs font-semibold" style={{color: '#2EC4B6'}}>PROMPT</p>
-            <p className="text-sm mt-1" style={{color: '#1F2933'}}>{reflectionPrompt}</p>
-            <button onClick={() => setShowJournalPrompt(false)} className="text-[10px] mt-2 underline" style={{color: '#6B7C8F'}}>
+            <p className="text-sm mt-1" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{reflectionPrompt}</p>
+            <button onClick={() => setShowJournalPrompt(false)} className="text-[10px] mt-2 underline" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>
               Write freely instead
             </button>
           </div>
@@ -1687,7 +1731,7 @@ export default function App() {
         <textarea value={journalText} onChange={(e) => setJournalText(e.target.value)}
           placeholder="What's on your mind..."
           className="w-full h-32 resize-none text-sm rounded-xl p-3 outline-none"
-          style={{background: '#F7F9FB', color: '#1F2933', border: '1px solid #E8ECF0'}} />
+          style={{background: darkMode ? '#0d0d1a' : '#F7F9FB', color: darkMode ? '#e0e0e0' : '#1F2933', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}} />
 
         {/* Emotion Tags */}
         <div className="flex flex-wrap gap-2 mt-3">
@@ -1714,11 +1758,11 @@ export default function App() {
       {/* Past Entries */}
       {journalEntries.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm" style={{color: '#6B7C8F'}}>Past Entries</h3>
+          <h3 className="font-semibold text-sm" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Past Entries</h3>
           {journalEntries.slice(0, 20).map(entry => (
-            <div key={entry.id} className="rounded-xl p-4 shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
+            <div key={entry.id} className="rounded-xl p-4 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
               <div className="flex items-center justify-between mb-2">
-                <span className="text-[10px] font-medium" style={{color: '#9CA8B5'}}>
+                <span className="text-[10px] font-medium" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>
                   {new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                 </span>
                 {entry.emotion && (
@@ -1730,7 +1774,7 @@ export default function App() {
                 )}
               </div>
               {entry.prompt && <p className="text-[10px] italic mb-1" style={{color: '#2EC4B6'}}>"{entry.prompt}"</p>}
-              <p className="text-sm whitespace-pre-wrap" style={{color: '#1F2933'}}>{entry.text}</p>
+              <p className="text-sm whitespace-pre-wrap" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{entry.text}</p>
             </div>
           ))}
         </div>
@@ -1739,7 +1783,7 @@ export default function App() {
       {journalEntries.length === 0 && (
         <div className="text-center py-8">
           <span className="text-4xl">📝</span>
-          <p className="mt-2 text-sm" style={{color: '#6B7C8F'}}>Your journal is empty. Start writing!</p>
+          <p className="mt-2 text-sm" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Your journal is empty. Start writing!</p>
         </div>
       )}
     </div>
@@ -1754,27 +1798,27 @@ export default function App() {
 
     return (
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-24">
-        <h2 className="text-xl font-bold" style={{color: '#1F2933'}}>Your Progress</h2>
+        <h2 className="text-xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Your Progress</h2>
 
         {/* Streak & Stats */}
         <div className="grid grid-cols-3 gap-3">
-          <div className="rounded-xl p-4 text-center shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
+          <div className="rounded-xl p-4 text-center shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
             <p className="text-2xl font-bold" style={{color: '#2EC4B6'}}>{streak}</p>
-            <p className="text-[10px]" style={{color: '#6B7C8F'}}>Day Streak</p>
+            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Day Streak</p>
           </div>
-          <div className="rounded-xl p-4 text-center shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
+          <div className="rounded-xl p-4 text-center shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
             <p className="text-2xl font-bold" style={{color: '#9D8DF1'}}>{moodHistory.length}</p>
-            <p className="text-[10px]" style={{color: '#6B7C8F'}}>Check-ins</p>
+            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Check-ins</p>
           </div>
-          <div className="rounded-xl p-4 text-center shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
+          <div className="rounded-xl p-4 text-center shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
             <p className="text-2xl font-bold" style={{color: '#FF6B6B'}}>{journalEntries.length}</p>
-            <p className="text-[10px]" style={{color: '#6B7C8F'}}>Journal Entries</p>
+            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Journal Entries</p>
           </div>
         </div>
 
         {/* Weekly Mood Chart */}
-        <div className="rounded-2xl p-5 shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
-          <h3 className="font-semibold text-sm mb-4" style={{color: '#1F2933'}}>This Week's Moods</h3>
+        <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
+          <h3 className="font-semibold text-sm mb-4" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>This Week's Moods</h3>
           {last7.length > 0 ? (
             <div className="flex items-end justify-around gap-1 h-32">
               {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => {
@@ -1791,7 +1835,7 @@ export default function App() {
                       </div>
                     ) : (
                       <div className="w-10 h-10 rounded-full flex items-center justify-center"
-                        style={{background: '#F7F9FB', border: isToday ? '2px dashed #2EC4B6' : 'none'}}>
+                        style={{background: darkMode ? '#0d0d1a' : '#F7F9FB', border: isToday ? '2px dashed #2EC4B6' : 'none'}}>
                         <span className="text-[10px]" style={{color: '#ccc'}}>—</span>
                       </div>
                     )}
@@ -1801,14 +1845,14 @@ export default function App() {
               })}
             </div>
           ) : (
-            <p className="text-center text-sm py-4" style={{color: '#9CA8B5'}}>No mood data yet. Start checking in!</p>
+            <p className="text-center text-sm py-4" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>No mood data yet. Start checking in!</p>
           )}
         </div>
 
         {/* Mood Distribution */}
         {Object.keys(weeklySummary).length > 0 && (
-          <div className="rounded-2xl p-5 shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
-            <h3 className="font-semibold text-sm mb-3" style={{color: '#1F2933'}}>Mood Distribution</h3>
+          <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
+            <h3 className="font-semibold text-sm mb-3" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Mood Distribution</h3>
             <div className="space-y-2">
               {Object.entries(weeklySummary).sort((a,b) => b[1] - a[1]).map(([mood, count]) => {
                 const moodObj = MOOD_OPTIONS.find(m => m.label === mood);
@@ -1816,11 +1860,11 @@ export default function App() {
                 return (
                   <div key={mood} className="flex items-center gap-2">
                     <span className="text-sm w-6">{moodObj?.emoji}</span>
-                    <span className="text-[11px] w-14" style={{color: '#6B7C8F'}}>{mood}</span>
-                    <div className="flex-1 h-4 rounded-full overflow-hidden" style={{background: '#F7F9FB'}}>
+                    <span className="text-[11px] w-14" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{mood}</span>
+                    <div className="flex-1 h-4 rounded-full overflow-hidden" style={{background: darkMode ? '#0d0d1a' : '#F7F9FB'}}>
                       <div className="h-full rounded-full transition-all" style={{width: pct + '%', background: moodObj?.color || '#ccc'}} />
                     </div>
-                    <span className="text-[10px] w-8 text-right font-medium" style={{color: '#6B7C8F'}}>{pct}%</span>
+                    <span className="text-[10px] w-8 text-right font-medium" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{pct}%</span>
                   </div>
                 );
               })}
@@ -1829,8 +1873,8 @@ export default function App() {
         )}
 
         {/* Milestones */}
-        <div className="rounded-2xl p-5 shadow-sm" style={{background: 'white', border: '1px solid #E8ECF0'}}>
-          <h3 className="font-semibold text-sm mb-3" style={{color: '#1F2933'}}>Milestones</h3>
+        <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
+          <h3 className="font-semibold text-sm mb-3" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Milestones</h3>
           <div className="grid grid-cols-3 gap-2">
             {MILESTONES.map(m => {
               const achieved = moodHistory.length >= m.days;
@@ -1850,7 +1894,8 @@ export default function App() {
 
 
   return (
-    <div className="flex h-screen w-full flex-col bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden" 
+    <ErrorBoundary>
+    <div className="flex h-screen w-full flex-col bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden"
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       {/* Navbar */}
       <nav className="relative border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-md shrink-0">
@@ -1943,7 +1988,14 @@ export default function App() {
         {/* ==================== CHAT VIEW ==================== */}
         {view === 'chat' && (
           <>
-            <div className="flex-1 overflow-y-auto px-4 py-4">
+              {/* === TAB ROUTER (authenticated teen users) === */}
+              {authToken && currentUser?.role !== 'provider' && activeTab === 'home' && renderHomeTab()}
+              {authToken && currentUser?.role !== 'provider' && activeTab === 'journal' && renderJournalTab()}
+              {authToken && currentUser?.role !== 'provider' && activeTab === 'progress' && renderProgressTab()}
+              {/* Show chat for: guests, providers, or when chat tab active */}
+              {((!authToken) || currentUser?.role === 'provider' || activeTab === 'chat') && (
+              <>
+              <div className="flex-1 overflow-y-auto px-4 py-4">
               <div className="mx-auto max-w-3xl">
                 {/* Quarter Navigation */}
                 {currentUser && viewingQuarter && (
@@ -1976,7 +2028,7 @@ export default function App() {
                       <Bot className="w-12 h-12 text-zinc-800" />
                     </div>
                     <h2 className="text-2xl font-bold text-zinc-100">How can I help you today?</h2>
-                    <p className="mt-2 max-w-md text-zinc-500 text-sm">Ask anything about your documents or provide a prompt to start.</p>
+                    <p className="mt-2 max-w-md text-zinc-500 text-sm">AI-guided emotional growth with human support when you need it.</p>
                     {!currentUser && <p className="mt-4 text-xs text-zinc-600">Sign in to save your chat history.</p>}
                     {currentUser && viewingQuarter && (
                       <p className="mt-4 text-xs text-zinc-600">No messages this quarter.</p>
@@ -1994,7 +2046,7 @@ export default function App() {
                     {groupMessagesByDate(messages).map((item, i) => {
                       if (item.type === 'date-header') {
                         return (
-                          <div key={`date-${i}`} className="flex items-center gap-3 my-6">
+                          <div key={`date-${item.date}`} className="flex items-center gap-3 my-6">
                             <div className="flex-1 h-px bg-zinc-800/50" />
                             <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600 px-3 py-1 rounded-full bg-zinc-900/50 border border-zinc-800/50">
                               {formatDateHeader(item.date)}
@@ -2003,7 +2055,7 @@ export default function App() {
                           </div>
                         );
                       }
-                      return <ChatMessage key={i} {...item} profilePic={profilePic} />;
+                      return <ChatMessage key={item.created_at ? `${item.type}-${item.created_at}` : i} {...item} profilePic={profilePic} />;
                     })}
                   </>
                 )}
@@ -2015,7 +2067,7 @@ export default function App() {
               <div className="mx-auto max-w-3xl px-4">
                 <form onSubmit={handleSendMessage} className="relative flex items-center rounded-2xl border border-zinc-800 bg-zinc-900/50 p-1.5 shadow-2xl focus-within:border-indigo-500/50 transition-all ring-1 ring-white/5">
                   <input type="file" ref={fileInputRef} onChange={handleFileUpload} className="hidden" accept=".txt,.md,.csv,.json,.pdf,.doc,.docx,.py,.js,.html,.css" />
-                  <button type="button" onClick={() => fileInputRef.current?.click()} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors" title="Upload file">
+                  <button type="button" onClick={() => fileInputRef.current?.click()} aria-label="Upload file" className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-500 hover:text-zinc-300 hover:bg-zinc-800 transition-colors" title="Upload file">
                     <Paperclip size={18} />
                   </button>
                   <div className="flex-1 flex flex-col">
@@ -2027,14 +2079,14 @@ export default function App() {
                     )}
                     <textarea value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim()) { handleSendMessage(e); } } }}
-                      placeholder={isLoading ? "Generating response..." : "Ask a question about your docs..."}
+                      placeholder={isLoading ? "Generating response..." : "How are you feeling today?"}
                       rows={1}
                       onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
                       className="flex-1 bg-transparent px-4 py-3 text-sm outline-none placeholder:text-zinc-600 resize-none overflow-y-auto max-h-[150px]" />
                   </div>
                   <div className="flex items-center gap-1">
                     {isLoading && (
-                      <button type="button" onClick={handleStop} className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800"><StopCircle size={20} /></button>
+                      <button type="button" onClick={handleStop} aria-label="Stop generating" className="flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800"><StopCircle size={20} /></button>
                     )}
                     <button type="submit" disabled={!input.trim() || isLoading}
                       className={`flex h-10 w-10 items-center justify-center rounded-xl transition-all ${!input.trim() || isLoading ? 'bg-zinc-800 text-zinc-600' : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500'}`}>
@@ -2044,11 +2096,11 @@ export default function App() {
                 </form>
                 {streamError && (
                   <div className="mt-3 flex items-center gap-2 rounded-xl bg-red-500/10 px-4 py-2 text-[11px] text-red-400 ring-1 ring-red-500/20">
-                    <ShieldAlert size={12} /> <span className="font-bold uppercase tracking-wider">Stream Error:</span> <span className="truncate">{streamError}</span>
+                    <ShieldAlert size={12} /> <span className="font-bold uppercase tracking-wider">Connection issue — please try again:</span> <span className="truncate">{streamError}</span>
                   </div>
                 )}
                 <div className="mt-4 flex items-center justify-between border-t border-zinc-900 pt-3">
-                  <p className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">&copy; 2026 RAG-BOT INC</p>
+                  <p className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest">&copy; 2026 TEEN ZEN</p>
                   <div className="flex gap-4">
                     <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><ShieldCheck size={10}/> SSL Encrypted</span>
                     <span className="text-[10px] font-medium text-zinc-600 uppercase tracking-widest flex items-center gap-1"><Globe size={10}/> Cloud Context</span>
@@ -2056,6 +2108,8 @@ export default function App() {
                 </div>
               </div>
             </div>
+              </>
+              )}
           </>
         )}
 
@@ -2127,7 +2181,7 @@ export default function App() {
 
               {/* Patient count badge */}
               <div className="mt-auto pt-3 text-[9px] text-zinc-600 font-bold text-center leading-tight">
-                {providerPatients.length}/{15}
+                {providerPatients.length}/{MAX_PATIENTS}
               </div>
             </div>
 
@@ -2385,7 +2439,7 @@ export default function App() {
                           <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Active Patients</p>
                         </div>
                         <div className="rounded-xl bg-zinc-950/50 p-4 border border-zinc-800 text-center">
-                          <p className="text-2xl font-bold text-amber-400">{15 - providerPatients.length}</p>
+                          <p className="text-2xl font-bold text-amber-400">{MAX_PATIENTS - providerPatients.length}</p>
                           <p className="text-[10px] text-zinc-500 uppercase tracking-widest mt-1">Available Slots</p>
                         </div>
                         <div className="rounded-xl bg-zinc-950/50 p-4 border border-zinc-800 text-center">
@@ -2410,7 +2464,7 @@ export default function App() {
                     </div>
                     <h3 className="text-xl font-bold text-zinc-300 mb-2">Welcome Back</h3>
                     <p className="text-sm text-zinc-500 max-w-md">Select a patient from the left sidebar to view their clinical profile, chat history, and observations.</p>
-                    <p className="text-xs text-zinc-600 mt-4">{providerPatients.length} patients assigned · {15 - providerPatients.length} slots available</p>
+                    <p className="text-xs text-zinc-600 mt-4">{providerPatients.length} patients assigned · {MAX_PATIENTS - providerPatients.length} slots available</p>
                   </div>
                 ) : activeChannel === 'overview' ? (
                   /* ===== OVERVIEW ===== */
@@ -2512,18 +2566,6 @@ export default function App() {
                           <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Confidentiality</p><p className={patientProfileData.confidentialityExplained ? "text-emerald-400" : "text-red-400"}>{patientProfileData.confidentialityExplained ? "Explained" : "Not yet"}</p></div>
                           {patientProfileData.sessionFormat && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Session Format</p><p className="text-zinc-300">{patientProfileData.sessionFormat}</p></div>}
                           {patientProfileData.paymentInfo && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Payment / Insurance</p><p className="text-zinc-300">{patientProfileData.paymentInfo}</p></div>}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Campus & Living Situation */}
-                    {(patientProfileData.campusName || patientProfileData.orphanageName) && (
-                      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6">
-                        <h4 className="text-xs font-bold uppercase tracking-widest text-indigo-400 mb-3">Campus & Living Situation</h4>
-                        <div className="grid grid-cols-2 gap-3 text-xs">
-                          {patientProfileData.campusName && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Campus / School</p><p className="text-zinc-300">{patientProfileData.campusName}</p></div>}
-                          {patientProfileData.campusId && <div><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Student ID</p><p className="text-zinc-300">{patientProfileData.campusId}</p></div>}
-                          {patientProfileData.orphanageName && <div className="col-span-2"><p className="text-zinc-500 text-[10px] uppercase font-bold mb-0.5">Children's Home / Orphanage</p><p className="text-zinc-300">{patientProfileData.orphanageName}</p></div>}
                         </div>
                       </div>
                     )}
@@ -3087,6 +3129,7 @@ export default function App() {
                     )}
                     <button
                       onClick={() => profilePicRef.current?.click()}
+                      aria-label="Change profile picture"
                       className="absolute inset-0 flex items-center justify-center rounded-2xl bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer">
                       <Camera size={22} className="text-white" />
                     </button>
@@ -4191,7 +4234,7 @@ export default function App() {
         <>
           {/* Chat bubble button */}
           {!providerChatOpen && (
-            <button onClick={() => setProviderChatOpen(true)}
+            <button onClick={() => setProviderChatOpen(true)} aria-label="Open AI assistant chat"
               className="fixed bottom-6 right-6 z-50 h-14 w-14 rounded-full bg-indigo-600 text-white shadow-xl shadow-indigo-500/30 hover:bg-indigo-500 transition-all flex items-center justify-center hover:scale-110 active:scale-95">
               <MessageSquare size={24} />
             </button>
@@ -4286,5 +4329,6 @@ export default function App() {
         </>
       )}
     </div>
+    </ErrorBoundary>
   );
 }

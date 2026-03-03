@@ -1516,7 +1516,7 @@ export default function App() {
 
     const ac = new AbortController();
     streamAbortRef.current = ac;
-    const apiUrl = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(userQuery)}`;
+    const apiUrl = joinUrl(API_BASE, "/api/chat/stream") + `?question=${encodeURIComponent(userQuery)}&language=${language}`;
 
     try {
       const response = await fetch(apiUrl, { signal: ac.signal, headers: { 'ngrok-skip-browser-warning': 'true' } });
@@ -1579,10 +1579,10 @@ export default function App() {
       let apiUrl;
       if (selectedPatient) {
         apiUrl = joinUrl(API_BASE, "/api/chat/provider-stream") +
-          `?question=${encodeURIComponent(q)}&patient_id=${selectedPatient.id}`;
+          `?question=${encodeURIComponent(q)}&patient_id=${selectedPatient.id}&language=${language}`;
       } else {
         apiUrl = joinUrl(API_BASE, "/api/chat/stream") +
-          `?question=${encodeURIComponent(q)}`;
+          `?question=${encodeURIComponent(q)}&language=${language}`;
       }
       const response = await fetch(apiUrl, { headers: authToken ? authHeaders(authToken) : { 'ngrok-skip-browser-warning': 'true' } });
       if (!response.ok) throw new Error('Stream error');

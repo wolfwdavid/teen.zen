@@ -24,6 +24,13 @@ Your approach:
 - Remember you are a support tool, not a replacement for therapy
 
 If the user shares their name, age, or other personal info, acknowledge it warmly and use it to personalize the conversation."""
+
+LANGUAGE_INSTRUCTIONS = {
+    'ar': 'You must respond entirely in Arabic (العربية). Do not use any other language.',
+    'es': 'You must respond entirely in Spanish (español de España). Do not use any other language.',
+    'fr': 'You must respond entirely in French (français). Do not use any other language.',
+}
+
 import random
 import string
 
@@ -1123,10 +1130,13 @@ async def chat(req: ChatRequest):
         raise HTTPException(status_code=500, detail=f"Internal chatbot error: {str(e)}")
 
 @app.get('/api/chat/stream')
-async def chat_stream(question: str = Query(...)):
+async def chat_stream(question: str = Query(...), language: str = Query(default='en')):
+    lang_note = LANGUAGE_INSTRUCTIONS.get(language, '')
+    active_prompt = TEEN_SYSTEM_PROMPT + ('\n\n' + lang_note if lang_note else '')
+
     async def event_generator():
         try:
-            logger.info(f"🔍 [Stream] Question: {question}")
+            logger.info(f"🔍 [Stream] Question: {question} | Language: {language}")
             if chain_v2.rag_chain is None:
                 yield f"data: {json.dumps({'type': 'error', 'message': 'RAG system not initialized'})}\n\n"
                 return
@@ -1147,7 +1157,7 @@ async def chat_stream(question: str = Query(...)):
             rag_context = get_rag_context(question)
             full_text = ""
             try:
-                for token in groq_stream_response(question, system_prompt=TEEN_SYSTEM_PROMPT, context=rag_context):
+                for token in groq_stream_response(question, system_prompt=active_prompt, context=rag_context):
                     full_text += token
                     yield f"data: {json.dumps({'type': 'token', 'text': token})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"

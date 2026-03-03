@@ -3312,13 +3312,13 @@ export default function App() {
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
                       <input value={profileData.fullName} onChange={(e) => updateProfile('fullName', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="Legal full name" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
                       <input value={profileData.preferredName} onChange={(e) => updateProfile('preferredName', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="What you'd like to be called" />
                     </div>
                   </div>
@@ -3346,13 +3346,13 @@ export default function App() {
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
                       <input type="tel" value={profileData.contactPhone} onChange={(e) => updateProfile('contactPhone', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="+1 (555) 000-0000" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email</label>
                       <input type="email" value={profileData.contactEmail} onChange={(e) => updateProfile('contactEmail', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="personal@email.com" />
                     </div>
                   </div>
@@ -3362,19 +3362,19 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name</label>
                         <input value={profileData.emergencyName} onChange={(e) => updateProfile('emergencyName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Emergency contact name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Relationship</label>
                         <input value={profileData.emergencyRelation} onChange={(e) => updateProfile('emergencyRelation', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="e.g. Parent, Sibling" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
                         <input type="tel" value={profileData.emergencyPhone} onChange={(e) => updateProfile('emergencyPhone', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="+1 (555) 000-0000" />
                       </div>
                     </div>
@@ -3392,13 +3392,13 @@ export default function App() {
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">School / University / Campus</label>
                       <input value={profileData.campusName} onChange={(e) => updateProfile('campusName', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="e.g. NYU, Lincoln High School" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Student / Campus ID</label>
                       <input value={profileData.campusId} onChange={(e) => updateProfile('campusId', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="Optional" />
                     </div>
                   </div>
@@ -3414,7 +3414,7 @@ export default function App() {
                       <div className="space-y-1 ml-8">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name of Children's Home / Orphanage</label>
                         <input value={profileData.orphanageName} onChange={(e) => updateProfile('orphanageName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Name of facility" />
                       </div>
                     )}
@@ -3529,13 +3529,13 @@ export default function App() {
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">School / University / Campus</label>
                       <input value={profileData.campusName} onChange={(e) => updateProfile('campusName', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="e.g. NYU, Lincoln High School" />
                     </div>
                     <div className="space-y-1">
                       <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Student / Campus ID</label>
                       <input value={profileData.campusId} onChange={(e) => updateProfile('campusId', e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                        className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                         placeholder="Optional" />
                     </div>
                   </div>
@@ -3551,7 +3551,7 @@ export default function App() {
                       <div className="space-y-1 ml-8">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name of Children's Home / Orphanage</label>
                         <input value={profileData.orphanageName} onChange={(e) => updateProfile('orphanageName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Name of facility" />
                       </div>
                     )}
@@ -3572,13 +3572,13 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
                         <input value={profileData.parent1FullName} onChange={(e) => updateProfile('parent1FullName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Legal full name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
                         <input value={profileData.parent1PreferredName} onChange={(e) => updateProfile('parent1PreferredName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Preferred name" />
                       </div>
                     </div>
@@ -3604,13 +3604,13 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
                         <input type="tel" value={profileData.parent1ContactPhone} onChange={(e) => updateProfile('parent1ContactPhone', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="+1 (555) 000-0000" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email</label>
                         <input type="email" value={profileData.parent1ContactEmail} onChange={(e) => updateProfile('parent1ContactEmail', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="parent@email.com" />
                       </div>
                     </div>
@@ -3620,19 +3620,19 @@ export default function App() {
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name</label>
                           <input value={profileData.parent1EmergencyName} onChange={(e) => updateProfile('parent1EmergencyName', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                             placeholder="Emergency contact" />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Relationship</label>
                           <input value={profileData.parent1EmergencyRelation} onChange={(e) => updateProfile('parent1EmergencyRelation', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                             placeholder="Relationship" />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
                           <input type="tel" value={profileData.parent1EmergencyPhone} onChange={(e) => updateProfile('parent1EmergencyPhone', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                             placeholder="+1 (555) 000-0000" />
                         </div>
                       </div>
@@ -3648,13 +3648,13 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Full Name</label>
                         <input value={profileData.parent2FullName} onChange={(e) => updateProfile('parent2FullName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Legal full name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Preferred Name</label>
                         <input value={profileData.parent2PreferredName} onChange={(e) => updateProfile('parent2PreferredName', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Preferred name" />
                       </div>
                     </div>
@@ -3680,13 +3680,13 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
                         <input type="tel" value={profileData.parent2ContactPhone} onChange={(e) => updateProfile('parent2ContactPhone', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="+1 (555) 000-0000" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email</label>
                         <input type="email" value={profileData.parent2ContactEmail} onChange={(e) => updateProfile('parent2ContactEmail', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="parent@email.com" />
                       </div>
                     </div>
@@ -3696,19 +3696,19 @@ export default function App() {
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Name</label>
                           <input value={profileData.parent2EmergencyName} onChange={(e) => updateProfile('parent2EmergencyName', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                             placeholder="Emergency contact" />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Relationship</label>
                           <input value={profileData.parent2EmergencyRelation} onChange={(e) => updateProfile('parent2EmergencyRelation', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                             placeholder="Relationship" />
                         </div>
                         <div className="space-y-1">
                           <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Phone</label>
                           <input type="tel" value={profileData.parent2EmergencyPhone} onChange={(e) => updateProfile('parent2EmergencyPhone', e.target.value)}
-                            className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                            className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                             placeholder="+1 (555) 000-0000" />
                         </div>
                       </div>
@@ -3762,7 +3762,7 @@ export default function App() {
                       <div className="space-y-1">
                         <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Payment / Insurance Info</label>
                         <input value={profileData.paymentInfo} onChange={(e) => updateProfile('paymentInfo', e.target.value)}
-                          className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                          className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                           placeholder="Insurance provider or self-pay" />
                       </div>
                     </div>
@@ -3787,40 +3787,40 @@ export default function App() {
         {/* ==================== REGISTER VIEW ==================== */}
         {view === 'register' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
+            <div className={`w-full max-w-md space-y-6 rounded-3xl border p-10 shadow-2xl ${darkMode ? 'border-zinc-900 bg-zinc-900/30 backdrop-blur-xl ring-1 ring-white/5' : 'border-[#2EC4B6]/20 bg-white'}`}>
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <UserPlus size={32} />
                 </div>
                 <h2 className="text-3xl font-bold tracking-tight">Create Account</h2>
-                <p className="mt-2 text-sm text-zinc-500">Sign up to get started with RAG Chatbot Pro.</p>
+                <p className={`mt-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>Join Teen Zen and start your journey.</p>
               </div>
 
               <button onClick={handleGoogleSignIn}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 py-3.5 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all">
-                <img src={authToken ? teenZenLogo : teenZenLogoDark} alt="Teen Zen" className="h-8 w-8 rounded-lg" />
+                className={`w-full flex items-center justify-center gap-3 rounded-xl border py-3.5 text-sm font-medium transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 text-zinc-300 hover:bg-zinc-900 hover:text-white' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933]/80 hover:bg-[#2EC4B6]/5 hover:text-[#1F2933]'}`}>
+                <img src={darkMode ? teenzenLogoDark : teenzenLogoLight} alt="Teen Zen" className="h-8 w-8 rounded-lg" />
                 Sign up with Google
               </button>
               <div id="google-signin-fallback" className="w-full"></div>
 
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-zinc-800"></div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">or</span>
-                <div className="flex-1 h-px bg-zinc-800"></div>
+                <div className={`flex-1 h-px ${darkMode ? 'bg-zinc-800' : 'bg-[#2EC4B6]/20'}`}></div>
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>or</span>
+                <div className={`flex-1 h-px ${darkMode ? 'bg-zinc-800' : 'bg-[#2EC4B6]/20'}`}></div>
               </div>
 
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Username</label>
                   <input value={regForm.username} onChange={(e) => setRegForm({...regForm, username: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="Choose a username" required />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
                   <input type="email" value={regForm.email} onChange={(e) => setRegForm({...regForm, email: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="name@example.com" required />
                 </div>
 
@@ -3831,7 +3831,7 @@ export default function App() {
                   <div className="relative">
                     <input type={showPassword ? "text" : "password"} value={regForm.password}
                       onChange={(e) => setRegForm({...regForm, password: e.target.value})}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all"
+                      className={`w-full rounded-xl border px-4 py-3 pr-12 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] focus:border-[#2EC4B6]'}`}
                       placeholder="Min. 8 characters" required />
                     <button type="button" onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
@@ -3861,7 +3861,7 @@ export default function App() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Age</label>
                   <input type="number" value={regForm.age} onChange={(e) => setRegForm({...regForm, age: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="Must be 13 or older" min="13" max="120" required />
                 </div>
 
@@ -3870,7 +3870,7 @@ export default function App() {
                     Phone Number <span className="text-zinc-700">(optional)</span>
                   </label>
                   <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="+1234567890" />
                 </div>
 
@@ -3908,9 +3908,9 @@ export default function App() {
                 </button>
               </form>
 
-              <p className="text-center text-sm text-zinc-500">
+              <p className={`text-center text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>
                 Already have an account?{' '}
-                <button onClick={() => setView('login')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign In</button>
+                <button onClick={() => setView('login')} className="text-[#2EC4B6] hover:text-[#2EC4B6]/80 font-medium transition-colors">Sign In</button>
               </p>
               <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
                 By signing up, you agree to our <span className="text-zinc-400 underline cursor-pointer hover:text-zinc-200 transition-colors">Terms of Service</span>
@@ -3922,17 +3922,17 @@ export default function App() {
         {/* ==================== LOGIN VIEW ==================== */}
         {view === 'login' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
+            <div className={`w-full max-w-md space-y-6 rounded-3xl border p-10 shadow-2xl ${darkMode ? 'border-zinc-900 bg-zinc-900/30 backdrop-blur-xl ring-1 ring-white/5' : 'border-[#2EC4B6]/20 bg-white'}`}>
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <LogIn size={32} />
                 </div>
                 <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-                <p className="mt-2 text-sm text-zinc-500">Sign in to your account to continue.</p>
+                <p className={`mt-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>Sign in to your account to continue.</p>
               </div>
 
               <button onClick={handleGoogleSignIn}
-                className="w-full flex items-center justify-center gap-3 rounded-xl border border-zinc-800 bg-zinc-950 py-3.5 text-sm font-medium text-zinc-300 hover:bg-zinc-900 hover:text-white transition-all">
+                className={`w-full flex items-center justify-center gap-3 rounded-xl border py-3.5 text-sm font-medium transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 text-zinc-300 hover:bg-zinc-900 hover:text-white' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933]/80 hover:bg-[#2EC4B6]/5 hover:text-[#1F2933]'}`}>
                 <svg width="18" height="18" viewBox="0 0 24 24">
                   <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.1z" fill="#4285F4"/>
                   <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
@@ -3944,16 +3944,16 @@ export default function App() {
               <div id="google-signin-fallback" className="w-full"></div>
 
               <div className="flex items-center gap-3">
-                <div className="flex-1 h-px bg-zinc-800"></div>
-                <span className="text-[10px] font-bold uppercase tracking-widest text-zinc-600">or</span>
-                <div className="flex-1 h-px bg-zinc-800"></div>
+                <div className={`flex-1 h-px ${darkMode ? 'bg-zinc-800' : 'bg-[#2EC4B6]/20'}`}></div>
+                <span className={`text-[10px] font-bold uppercase tracking-widest ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>or</span>
+                <div className={`flex-1 h-px ${darkMode ? 'bg-zinc-800' : 'bg-[#2EC4B6]/20'}`}></div>
               </div>
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
                   <input type="email" value={loginForm.email} onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all placeholder:text-zinc-700"
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="name@example.com" required />
                 </div>
                 <div className="space-y-1">
@@ -3961,7 +3961,7 @@ export default function App() {
                   <div className="relative">
                     <input type={showPassword ? "text" : "password"} value={loginForm.password}
                       onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-indigo-500/50 outline-none transition-all"
+                      className={`w-full rounded-xl border px-4 py-3 pr-12 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] focus:border-[#2EC4B6]'}`}
                       placeholder="Enter your password" required />
                     <button type="button" onClick={() => setShowPassword(!showPassword)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
@@ -3980,9 +3980,9 @@ export default function App() {
                 </button>
               </form>
 
-              <p className="text-center text-sm text-zinc-500">
+              <p className={`text-center text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>
                 Don't have an account?{' '}
-                <button onClick={() => setView('register')} className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors">Sign Up</button>
+                <button onClick={() => setView('register')} className="text-[#2EC4B6] hover:text-[#2EC4B6]/80 font-medium transition-colors">Sign Up</button>
               </p>
               <p className="text-center text-xs text-zinc-600">
                 <button onClick={() => { setView('forgot'); setForgotStep(1); setForgotError(null); setForgotSuccess(false); setForgotEmail(''); setForgotPin(''); setForgotNewPassword(''); }}
@@ -3995,8 +3995,8 @@ export default function App() {
         {/* ==================== FORGOT PASSWORD VIEW ==================== */}
         {view === 'forgot' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
-              <button onClick={() => setView('login')} className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+            <div className={`w-full max-w-md space-y-6 rounded-3xl border p-10 shadow-2xl ${darkMode ? 'border-zinc-900 bg-zinc-900/30 backdrop-blur-xl ring-1 ring-white/5' : 'border-[#2EC4B6]/20 bg-white'}`}>
+              <button onClick={() => setView('login')} className={`flex items-center gap-1.5 text-xs transition-colors ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-[#1F2933]/50 hover:text-[#2EC4B6]'}`}>
                 <ArrowLeft size={14} /> Back to Sign In
               </button>
 
@@ -4024,7 +4024,7 @@ export default function App() {
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
                     <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
-                      className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-amber-500/50 outline-none transition-all placeholder:text-zinc-700"
+                      className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                       placeholder="name@example.com" />
                   </div>
                   {forgotError && (
@@ -4057,7 +4057,7 @@ export default function App() {
                     <div className="relative">
                       <input type={showPassword ? "text" : "password"} value={forgotNewPassword}
                         onChange={(e) => setForgotNewPassword(e.target.value)}
-                        className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 pr-12 text-sm focus:border-amber-500/50 outline-none transition-all"
+                        className={`w-full rounded-xl border px-4 py-3 pr-12 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] focus:border-[#2EC4B6]'}`}
                         placeholder="New password (min 8 chars)" />
                       <button type="button" onClick={() => setShowPassword(!showPassword)}
                         className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition-colors">
@@ -4098,8 +4098,8 @@ export default function App() {
         {/* ==================== VERIFY PIN VIEW ==================== */}
         {view === 'verify' && (
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
-            <div className="w-full max-w-md space-y-6 rounded-3xl border border-zinc-900 bg-zinc-900/30 p-10 backdrop-blur-xl ring-1 ring-white/5 shadow-2xl">
-              <button onClick={() => setView('register')} className="flex items-center gap-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-colors">
+            <div className={`w-full max-w-md space-y-6 rounded-3xl border p-10 shadow-2xl ${darkMode ? 'border-zinc-900 bg-zinc-900/30 backdrop-blur-xl ring-1 ring-white/5' : 'border-[#2EC4B6]/20 bg-white'}`}>
+              <button onClick={() => setView('register')} className={`flex items-center gap-1.5 text-xs transition-colors ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-[#1F2933]/50 hover:text-[#2EC4B6]'}`}>
                 <ArrowLeft size={14} /> Back
               </button>
               <div className="text-center">
@@ -4125,9 +4125,9 @@ export default function App() {
                       <input key={i} ref={(el) => (pinRefs.current[i] = el)} type="text" inputMode="numeric" maxLength={1}
                         value={digit} onChange={(e) => handlePinChange(i, e.target.value)} onKeyDown={(e) => handlePinKeyDown(i, e)}
                         onPaste={i === 0 ? handlePinPaste : undefined}
-                        className={`h-14 w-12 rounded-xl border text-center text-xl font-bold outline-none transition-all ${
-                          digit ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400' : 'border-zinc-800 bg-zinc-950 text-zinc-100'
-                        } focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/20`} />
+                        className={`h-14 w-12 rounded-xl border text-center text-xl font-bold outline-none transition-all focus:border-[#2EC4B6] focus:ring-2 focus:ring-[#2EC4B6]/20 ${
+                          digit ? 'border-[#2EC4B6] bg-[#2EC4B6]/10 text-[#2EC4B6]' : (darkMode ? 'border-zinc-800 bg-zinc-950 text-zinc-100' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933]')
+                        }`} />
                     ))}
                   </div>
                   {verifyError && (

@@ -9,6 +9,8 @@ import {
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
+import teenzenLogoLight from './assets/teenzen-logo.png';
+import teenzenLogoDark from './assets/teenzen-logo-dark.png';
 
 // --- Helpers ---
 function joinUrl(base, path) {
@@ -144,7 +146,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState('home');
   const [darkMode, setDarkMode] = useState(() => {
     const saved = localStorage.getItem('tz_darkMode');
-    return saved !== null ? JSON.parse(saved) : true;
+    return saved !== null ? JSON.parse(saved) : false;
   });
   useEffect(() => { localStorage.setItem('tz_darkMode', JSON.stringify(darkMode)); }, [darkMode]);
   const [dailyMood, setDailyMood] = useState(null);
@@ -1902,9 +1904,12 @@ export default function App() {
       <nav className={`relative border-b backdrop-blur-md shrink-0 ${darkMode ? 'border-zinc-900 bg-zinc-950/50' : 'border-zinc-200 bg-white/80'}`}>
         <div className="flex h-16 items-center justify-between px-6">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
-              <Bot className="w-5 h-5 text-white" />
-            </div>
+            {/* Robot icon kept for reference: <Bot className="w-5 h-5 text-white" /> */}
+            <img
+              src={darkMode ? teenzenLogoDark : teenzenLogoLight}
+              alt="Teen Zen logo"
+              className="h-9 w-9 rounded-xl object-contain"
+            />
             <div className="flex flex-col">
               <span className="text-sm font-bold tracking-tight leading-none">Teen Zen <span className="text-indigo-500"></span></span>
               <div className="mt-1 flex items-center gap-2">

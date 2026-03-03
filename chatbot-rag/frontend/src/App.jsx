@@ -1,10 +1,11 @@
 ﻿import React, { useState, useEffect, useRef } from 'react';
-import { 
+import {
   Check, X, Clock, Bot, User, Send, StopCircle, MessageSquare,
   ShieldCheck, Globe, Terminal, UserPlus, ShieldAlert, Eye, EyeOff,
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
   ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save,
-  ChevronLeft, ChevronRight, Archive, Search, Hash, Lock, Paperclip
+  ChevronLeft, ChevronRight, Archive, Search, Hash, Lock, Paperclip,
+  Sun, Moon
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -1895,10 +1896,10 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className="flex h-screen w-full flex-col bg-zinc-950 text-zinc-100 font-sans selection:bg-indigo-500/30 overflow-hidden"
+    <div className={`flex h-screen w-full flex-col font-sans selection:bg-indigo-500/30 overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-gray-50 text-zinc-900'}`}
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       {/* Navbar */}
-      <nav className="relative border-b border-zinc-900 bg-zinc-950/50 backdrop-blur-md shrink-0">
+      <nav className={`relative border-b backdrop-blur-md shrink-0 ${darkMode ? 'border-zinc-900 bg-zinc-950/50' : 'border-zinc-200 bg-white/80'}`}>
         <div className="flex h-16 items-center justify-between px-6">
           <div className="flex items-center gap-3">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-600 shadow-lg shadow-indigo-500/20 ring-1 ring-white/10">
@@ -1940,17 +1941,21 @@ export default function App() {
             <button onClick={() => navTo('debug')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'debug' ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'border-transparent text-zinc-400 hover:text-zinc-200'}`}>
               <Terminal size={14} /> Debug
             </button>
+            <button onClick={() => setDarkMode(d => !d)} aria-label="Toggle dark mode"
+              className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${darkMode ? 'border-zinc-700 bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'border-zinc-300 bg-white text-zinc-600 hover:bg-zinc-100'}`}>
+              {darkMode ? <Sun size={15} /> : <Moon size={15} />}
+            </button>
           </div>
 
           {/* Mobile hamburger */}
-          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className="md:hidden flex h-10 w-10 items-center justify-center rounded-xl text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200 transition-all">
+          <button onClick={() => setMobileMenuOpen(!mobileMenuOpen)} className={`md:hidden flex h-10 w-10 items-center justify-center rounded-xl transition-all ${darkMode ? 'text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200' : 'text-zinc-600 hover:bg-zinc-100'}`}>
             {mobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
           </button>
         </div>
 
         {/* Mobile dropdown */}
         {mobileMenuOpen && (
-          <div className="md:hidden border-t border-zinc-900 bg-zinc-950/95 backdrop-blur-xl">
+          <div className={`md:hidden border-t backdrop-blur-xl ${darkMode ? 'border-zinc-900 bg-zinc-950/95' : 'border-zinc-200 bg-white/95'}`}>
             <div className="flex flex-col p-3 gap-1">
               <button onClick={() => navTo('chat')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'chat' ? 'bg-zinc-800 text-white' : 'text-zinc-400 hover:bg-zinc-900'}`}>
                 <MessageSquare size={16} /> Chat
@@ -1976,6 +1981,11 @@ export default function App() {
               )}
               <button onClick={() => navTo('debug')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'debug' ? 'bg-zinc-800 text-indigo-400' : 'text-zinc-400 hover:bg-zinc-900'}`}>
                 <Terminal size={16} /> Debug
+              </button>
+              <button onClick={() => { setDarkMode(d => !d); setMobileMenuOpen(false); }}
+                className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${darkMode ? 'text-amber-400 hover:bg-zinc-900' : 'text-zinc-600 hover:bg-zinc-100'}`}>
+                {darkMode ? <Sun size={16} /> : <Moon size={16} />}
+                {darkMode ? 'Light Mode' : 'Dark Mode'}
               </button>
             </div>
           </div>

@@ -11,6 +11,7 @@ import {
 import API_BASE from "./api/apiBase";
 import teenzenLogoLight from './assets/teenzen-logo.png';
 import teenzenLogoDark from './assets/teenzen-logo-dark.png';
+import translations from './translations';
 
 // --- Helpers ---
 function joinUrl(base, path) {
@@ -149,6 +150,13 @@ export default function App() {
     return saved !== null ? JSON.parse(saved) : false;
   });
   useEffect(() => { localStorage.setItem('tz_darkMode', JSON.stringify(darkMode)); }, [darkMode]);
+
+  // Language
+  const [language, setLanguage] = useState(() => localStorage.getItem('tz_language') || 'en');
+  useEffect(() => { localStorage.setItem('tz_language', language); }, [language]);
+  const t = translations[language] || translations.en;
+  const isRTL = language === 'ar';
+
   const [dailyMood, setDailyMood] = useState(null);
   const [moodHistory, setMoodHistory] = useState([]);
   const [streak, setStreak] = useState(0);
@@ -525,6 +533,9 @@ export default function App() {
     return groups;
   };
 
+  const localeMap = { en: 'en-US', ar: 'ar-SA', es: 'es-ES', fr: 'fr-FR' };
+  const dateLocale = localeMap[language] || 'en-US';
+
   const formatDateHeader = (dateStr) => {
     try {
       const d = new Date(dateStr + 'T00:00:00');
@@ -532,7 +543,7 @@ export default function App() {
       const yesterday = new Date(today); yesterday.setDate(yesterday.getDate() - 1);
       if (d.getTime() === today.getTime()) return 'Today';
       if (d.getTime() === yesterday.getTime()) return 'Yesterday';
-      return d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+      return d.toLocaleDateString(dateLocale, { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
     } catch { return dateStr; }
   };
 
@@ -1619,24 +1630,24 @@ export default function App() {
       {/* Greeting */}
       <div className="text-center">
         <h1 className="text-2xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>
-          {(() => { const h = new Date().getHours(); return h < 12 ? 'Good Morning' : h < 17 ? 'Good Afternoon' : 'Good Evening'; })()}
+          {(() => { const h = new Date().getHours(); return h < 12 ? t.home.morning : h < 17 ? t.home.afternoon : t.home.evening; })()}
           {currentUser?.username ? `, ${currentUser.username}` : ''} 👋
         </h1>
-        <p className="text-sm mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>How are you feeling today?</p>
+        <p className="text-sm mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.home.howFeeling}</p>
       </div>
 
       {/* Streak */}
       {streak > 0 && (
         <div className="flex items-center justify-center gap-2 py-2">
           <span className="text-2xl">🔥</span>
-          <span className="font-bold text-lg" style={{color: '#2EC4B6'}}>{streak} day streak!</span>
+          <span className="font-bold text-lg" style={{color: '#2EC4B6'}}>{streak} {t.home.dayStreak}</span>
         </div>
       )}
 
       {/* Mood Check-in */}
       <div className="rounded-2xl p-6 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
         <h3 className="font-semibold mb-4 text-center" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>
-          {dailyMood ? "Today's mood" : 'Daily Mood Check-in'}
+          {dailyMood ? t.home.todaysMood : t.home.moodCheckin}
         </h3>
         <div className="flex justify-center gap-3">
           {MOOD_OPTIONS.map(m => (
@@ -1648,7 +1659,7 @@ export default function App() {
                 transform: dailyMood === m.label ? 'scale(1.1)' : 'scale(1)'
               }}>
               <span className="text-3xl">{m.emoji}</span>
-              <span className="text-[10px] font-medium" style={{color: dailyMood === m.label ? m.color : '#6B7C8F'}}>{m.label}</span>
+              <span className="text-[10px] font-medium" style={{color: dailyMood === m.label ? m.color : '#6B7C8F'}}>{t.moods[m.label] || m.label}</span>
             </button>
           ))}
         </div>
@@ -1656,12 +1667,12 @@ export default function App() {
 
       {/* Reflection Prompt */}
       <div className="rounded-2xl p-5 shadow-sm" style={{background: 'linear-gradient(135deg, #2EC4B620, #9D8DF120)', border: '1px solid #E8ECF0'}}>
-        <p className="text-xs font-semibold mb-2" style={{color: '#2EC4B6'}}>💭 DAILY REFLECTION</p>
+        <p className="text-xs font-semibold mb-2" style={{color: '#2EC4B6'}}>{t.home.dailyReflection}</p>
         <p className="text-sm italic" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>"{reflectionPrompt}"</p>
         <button onClick={() => { setActiveTab('journal'); setShowJournalPrompt(true); }}
           className="mt-3 text-xs font-semibold px-4 py-2 rounded-full transition-all hover:opacity-80"
           style={{background: '#2EC4B6', color: 'white'}}>
-          Write in Journal →
+          {t.home.writeInJournal}
         </button>
       </div>
 
@@ -1671,41 +1682,41 @@ export default function App() {
           className="rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all"
           style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
           <span className="text-2xl">💬</span>
-          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Start Chat</p>
-          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Talk to Teen Zen AI</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.home.startChat}</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.home.talkToAI}</p>
         </button>
         <button onClick={() => setActiveTab('journal')}
           className="rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all"
           style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
           <span className="text-2xl">📝</span>
-          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Journal</p>
-          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Write your thoughts</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.home.journal}</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.home.writeThoughts}</p>
         </button>
         <button onClick={() => setActiveTab('progress')}
           className="rounded-2xl p-4 text-left shadow-sm hover:shadow-md transition-all"
           style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
           <span className="text-2xl">📊</span>
-          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Progress</p>
-          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>View your journey</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.home.progress}</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.home.viewJourney}</p>
         </button>
         <div className="rounded-2xl p-4 text-left shadow-sm"
           style={{background: 'linear-gradient(135deg, #9D8DF130, #FF6B6B15)', border: '1px solid #E8ECF0'}}>
           <span className="text-2xl">🧘</span>
-          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Breathe</p>
-          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Coming soon</p>
+          <p className="font-semibold text-sm mt-2" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.home.breathe}</p>
+          <p className="text-[10px] mt-1" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.home.comingSoon}</p>
         </div>
       </div>
 
       {/* Crisis Banner */}
       <div className="rounded-xl p-3 text-center" style={{background: '#FF6B6B15', border: '1px solid #FF6B6B30'}}>
         <p className="text-[11px]" style={{color: '#FF6B6B'}}>
-          ⚠️ If you're in crisis, please call <strong>988</strong> (Suicide & Crisis Lifeline) or text <strong>HELLO</strong> to 741741
+          {t.home.crisis}
         </p>
       </div>
 
       {/* Disclaimer */}
       <p className="text-center text-[10px] px-4" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>
-        Teen Zen is an AI-guided emotional growth platform. It is not a substitute for professional medical advice, diagnosis, or treatment.
+        {t.home.disclaimer}
       </p>
     </div>
   );
@@ -1713,26 +1724,26 @@ export default function App() {
   // === JOURNAL TAB ===
   const renderJournalTab = () => (
     <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-24">
-      <h2 className="text-xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>My Journal</h2>
+      <h2 className="text-xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.journal.title}</h2>
 
       {/* Write Entry */}
       <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
         {showJournalPrompt && (
           <div className="mb-3 p-3 rounded-xl" style={{background: '#2EC4B610'}}>
-            <p className="text-xs font-semibold" style={{color: '#2EC4B6'}}>PROMPT</p>
+            <p className="text-xs font-semibold" style={{color: '#2EC4B6'}}>{t.journal.prompt}</p>
             <p className="text-sm mt-1" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{reflectionPrompt}</p>
             <button onClick={() => setShowJournalPrompt(false)} className="text-[10px] mt-2 underline" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>
-              Write freely instead
+              {t.journal.writeFree}
             </button>
           </div>
         )}
         {!showJournalPrompt && (
           <button onClick={() => setShowJournalPrompt(true)} className="text-[10px] mb-2 underline" style={{color: '#2EC4B6'}}>
-            Show prompt
+            {t.journal.showPrompt}
           </button>
         )}
         <textarea value={journalText} onChange={(e) => setJournalText(e.target.value)}
-          placeholder="What's on your mind..."
+          placeholder={t.journal.textarea}
           className="w-full h-32 resize-none text-sm rounded-xl p-3 outline-none"
           style={{background: darkMode ? '#0d0d1a' : '#F7F9FB', color: darkMode ? '#e0e0e0' : '#1F2933', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}} />
 
@@ -1746,7 +1757,7 @@ export default function App() {
                 color: journalEmotion === m.label ? m.color : '#6B7C8F',
                 border: journalEmotion === m.label ? '1px solid ' + m.color : '1px solid #E8ECF0'
               }}>
-              {m.emoji} {m.label}
+              {m.emoji} {t.moods[m.label] || m.label}
             </button>
           ))}
         </div>
@@ -1754,25 +1765,25 @@ export default function App() {
         <button onClick={saveJournal} disabled={!journalText.trim()}
           className="mt-4 w-full py-2.5 rounded-xl text-sm font-semibold text-white transition-all disabled:opacity-40"
           style={{background: '#2EC4B6'}}>
-          Save Entry
+          {t.journal.saveEntry}
         </button>
       </div>
 
       {/* Past Entries */}
       {journalEntries.length > 0 && (
         <div className="space-y-3">
-          <h3 className="font-semibold text-sm" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Past Entries</h3>
+          <h3 className="font-semibold text-sm" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.journal.pastEntries}</h3>
           {journalEntries.slice(0, 20).map(entry => (
             <div key={entry.id} className="rounded-xl p-4 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
               <div className="flex items-center justify-between mb-2">
                 <span className="text-[10px] font-medium" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>
-                  {new Date(entry.date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                  {new Date(entry.date).toLocaleDateString(dateLocale, { weekday: 'short', month: 'short', day: 'numeric' })}
                 </span>
                 {entry.emotion && (
                   <span className="text-[10px] px-2 py-0.5 rounded-full"
                     style={{background: (MOOD_OPTIONS.find(m => m.label === entry.emotion)?.color || '#ccc') + '20',
                             color: MOOD_OPTIONS.find(m => m.label === entry.emotion)?.color || '#666'}}>
-                    {MOOD_OPTIONS.find(m => m.label === entry.emotion)?.emoji} {entry.emotion}
+                    {MOOD_OPTIONS.find(m => m.label === entry.emotion)?.emoji} {t.moods[entry.emotion] || entry.emotion}
                   </span>
                 )}
               </div>
@@ -1786,7 +1797,7 @@ export default function App() {
       {journalEntries.length === 0 && (
         <div className="text-center py-8">
           <span className="text-4xl">📝</span>
-          <p className="mt-2 text-sm" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Your journal is empty. Start writing!</p>
+          <p className="mt-2 text-sm" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.journal.empty}</p>
         </div>
       )}
     </div>
@@ -1801,30 +1812,30 @@ export default function App() {
 
     return (
       <div className="max-w-2xl mx-auto px-4 py-6 space-y-5 pb-24">
-        <h2 className="text-xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Your Progress</h2>
+        <h2 className="text-xl font-bold" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.progress.title}</h2>
 
         {/* Streak & Stats */}
         <div className="grid grid-cols-3 gap-3">
           <div className="rounded-xl p-4 text-center shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
             <p className="text-2xl font-bold" style={{color: '#2EC4B6'}}>{streak}</p>
-            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Day Streak</p>
+            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.progress.dayStreak}</p>
           </div>
           <div className="rounded-xl p-4 text-center shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
             <p className="text-2xl font-bold" style={{color: '#9D8DF1'}}>{moodHistory.length}</p>
-            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Check-ins</p>
+            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.progress.checkins}</p>
           </div>
           <div className="rounded-xl p-4 text-center shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
             <p className="text-2xl font-bold" style={{color: '#FF6B6B'}}>{journalEntries.length}</p>
-            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>Journal Entries</p>
+            <p className="text-[10px]" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.progress.journalEntries}</p>
           </div>
         </div>
 
         {/* Weekly Mood Chart */}
         <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
-          <h3 className="font-semibold text-sm mb-4" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>This Week's Moods</h3>
+          <h3 className="font-semibold text-sm mb-4" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.progress.weekMoods}</h3>
           {last7.length > 0 ? (
             <div className="flex items-end justify-around gap-1 h-32">
-              {['Sun','Mon','Tue','Wed','Thu','Fri','Sat'].map((day, i) => {
+              {t.progress.days.map((day, i) => {
                 const dayEntries = last7.filter(h => new Date(h.date).getDay() === i);
                 const mood = dayEntries.length > 0 ? dayEntries[dayEntries.length - 1].mood : null;
                 const moodObj = MOOD_OPTIONS.find(m => m.label === mood);
@@ -1848,14 +1859,14 @@ export default function App() {
               })}
             </div>
           ) : (
-            <p className="text-center text-sm py-4" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>No mood data yet. Start checking in!</p>
+            <p className="text-center text-sm py-4" style={{color: darkMode ? '#6B7C8F' : '#9CA8B5'}}>{t.progress.noMoodData}</p>
           )}
         </div>
 
         {/* Mood Distribution */}
         {Object.keys(weeklySummary).length > 0 && (
           <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
-            <h3 className="font-semibold text-sm mb-3" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Mood Distribution</h3>
+            <h3 className="font-semibold text-sm mb-3" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.progress.moodDistribution}</h3>
             <div className="space-y-2">
               {Object.entries(weeklySummary).sort((a,b) => b[1] - a[1]).map(([mood, count]) => {
                 const moodObj = MOOD_OPTIONS.find(m => m.label === mood);
@@ -1863,7 +1874,7 @@ export default function App() {
                 return (
                   <div key={mood} className="flex items-center gap-2">
                     <span className="text-sm w-6">{moodObj?.emoji}</span>
-                    <span className="text-[11px] w-14" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{mood}</span>
+                    <span className="text-[11px] w-14" style={{color: darkMode ? '#8896a4' : '#6B7C8F'}}>{t.moods[mood] || mood}</span>
                     <div className="flex-1 h-4 rounded-full overflow-hidden" style={{background: darkMode ? '#0d0d1a' : '#F7F9FB'}}>
                       <div className="h-full rounded-full transition-all" style={{width: pct + '%', background: moodObj?.color || '#ccc'}} />
                     </div>
@@ -1877,7 +1888,7 @@ export default function App() {
 
         {/* Milestones */}
         <div className="rounded-2xl p-5 shadow-sm" style={{background: darkMode ? '#1a1a2e' : 'white', border: darkMode ? '1px solid #2a2a4a' : '1px solid #E8ECF0'}}>
-          <h3 className="font-semibold text-sm mb-3" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>Milestones</h3>
+          <h3 className="font-semibold text-sm mb-3" style={{color: darkMode ? '#e0e0e0' : '#1F2933'}}>{t.progress.milestones}</h3>
           <div className="grid grid-cols-3 gap-2">
             {MILESTONES.map(m => {
               const achieved = moodHistory.length >= m.days;
@@ -1898,7 +1909,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-    <div className={`flex h-screen w-full flex-col font-sans selection:bg-indigo-500/30 overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-[#F7F9FB] text-[#1F2933]'}`}
+    <div dir={isRTL ? 'rtl' : 'ltr'} className={`flex h-screen w-full flex-col font-sans selection:bg-indigo-500/30 overflow-hidden transition-colors duration-200 ${darkMode ? 'bg-zinc-950 text-zinc-100' : 'bg-[#F7F9FB] text-[#1F2933]'}`}
       style={{ paddingTop: 'env(safe-area-inset-top)', paddingBottom: 'env(safe-area-inset-bottom)', paddingLeft: 'env(safe-area-inset-left)', paddingRight: 'env(safe-area-inset-right)' }}>
       {/* Navbar */}
       <nav className={`relative border-b backdrop-blur-md shrink-0 ${darkMode ? 'border-zinc-900 bg-zinc-950/50' : 'border-[#2EC4B6]/20 bg-white/90'}`}>
@@ -1922,34 +1933,43 @@ export default function App() {
           {/* Desktop menu */}
           <div className="hidden md:flex items-center gap-2">
             <button onClick={() => navTo('chat')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'chat' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
-              <MessageSquare size={14} /> Chat
+              <MessageSquare size={14} /> {t.nav.chat}
             </button>
             {currentUser && (
               <button onClick={() => navTo('profile')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'profile' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
-                <UserCircle size={14} /> Profile
+                <UserCircle size={14} /> {t.nav.profile}
               </button>
             )}
             {!currentUser ? (
               <>
                 <button onClick={() => navTo('register')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'register' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
-                  <UserPlus size={14} /> Register
+                  <UserPlus size={14} /> {t.nav.register}
                 </button>
                 <button onClick={() => navTo('login')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'login' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-white' : 'bg-[#2EC4B6]/10 border-[#2EC4B6]/40 text-[#2EC4B6]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
-                  <LogIn size={14} /> Sign In
+                  <LogIn size={14} /> {t.nav.signIn}
                 </button>
               </>
             ) : (
               <button onClick={handleLogout} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border border-transparent ${darkMode ? 'text-zinc-400 hover:text-zinc-200' : 'text-[#1F2933]/60 hover:text-[#1F2933]'}`}>
-                <User size={14} /> {capitalize(currentUser.username)} (Sign Out)
+                <User size={14} /> {capitalize(currentUser.username)} ({t.nav.signOut})
               </button>
             )}
             <button onClick={() => navTo('debug')} className={`flex items-center gap-2 rounded-lg px-4 py-2 text-xs font-bold uppercase tracking-wider transition-all border ${view === 'debug' ? (darkMode ? 'bg-zinc-800 border-zinc-700 text-indigo-400' : 'bg-[#9D8DF1]/10 border-[#9D8DF1]/40 text-[#9D8DF1]') : (darkMode ? 'border-transparent text-zinc-400 hover:text-zinc-200' : 'border-transparent text-[#1F2933]/60 hover:text-[#1F2933]')}`}>
-              <Terminal size={14} /> Debug
+              <Terminal size={14} /> {t.nav.debug}
             </button>
             <button onClick={() => setDarkMode(d => !d)} aria-label="Toggle dark mode"
               className={`flex h-9 w-9 items-center justify-center rounded-lg border transition-all ${darkMode ? 'border-zinc-700 bg-zinc-800 text-amber-400 hover:bg-zinc-700' : 'border-[#2EC4B6]/40 bg-[#F7F9FB] text-[#2EC4B6] hover:bg-[#2EC4B6]/10'}`}>
               {darkMode ? <Sun size={15} /> : <Moon size={15} />}
             </button>
+            {/* Language switcher */}
+            <div className={`flex items-center gap-0.5 rounded-lg border p-0.5 ${darkMode ? 'border-zinc-700 bg-zinc-900' : 'border-[#2EC4B6]/20 bg-[#F7F9FB]'}`}>
+              {[{code:'en',flag:'🇬🇧'},{code:'ar',flag:'🇸🇦'},{code:'es',flag:'🇪🇸'},{code:'fr',flag:'🇫🇷'}].map(({code,flag}) => (
+                <button key={code} onClick={() => setLanguage(code)} title={code.toUpperCase()}
+                  className={`flex h-7 w-7 items-center justify-center rounded-md text-sm transition-all ${language === code ? (darkMode ? 'bg-zinc-700' : 'bg-[#2EC4B6]/15') : 'hover:bg-zinc-800/20'}`}>
+                  {flag}
+                </button>
+              ))}
+            </div>
           </div>
 
           {/* Mobile hamburger */}
@@ -1963,35 +1983,47 @@ export default function App() {
           <div className={`md:hidden border-t backdrop-blur-xl ${darkMode ? 'border-zinc-900 bg-zinc-950/95' : 'border-zinc-200 bg-white/95'}`}>
             <div className="flex flex-col p-3 gap-1">
               <button onClick={() => navTo('chat')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'chat' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
-                <MessageSquare size={16} /> Chat
+                <MessageSquare size={16} /> {t.nav.chat}
               </button>
               {currentUser && (
                 <button onClick={() => navTo('profile')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'profile' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
-                  <UserCircle size={16} /> Profile
+                  <UserCircle size={16} /> {t.nav.profile}
                 </button>
               )}
               {!currentUser ? (
                 <>
                   <button onClick={() => navTo('register')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'register' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
-                    <UserPlus size={16} /> Register
+                    <UserPlus size={16} /> {t.nav.register}
                   </button>
                   <button onClick={() => navTo('login')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'login' ? (darkMode ? 'bg-zinc-800 text-white' : 'bg-[#2EC4B6]/10 text-[#2EC4B6]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
-                    <LogIn size={16} /> Sign In
+                    <LogIn size={16} /> {t.nav.signIn}
                   </button>
                 </>
               ) : (
                 <button onClick={() => { handleLogout(); setMobileMenuOpen(false); }} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5'}`}>
-                  <User size={16} /> Sign Out
+                  <User size={16} /> {t.nav.signOut}
                 </button>
               )}
               <button onClick={() => navTo('debug')} className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${view === 'debug' ? (darkMode ? 'bg-zinc-800 text-indigo-400' : 'bg-[#9D8DF1]/10 text-[#9D8DF1]') : (darkMode ? 'text-zinc-400 hover:bg-zinc-900' : 'text-[#1F2933]/60 hover:bg-[#2EC4B6]/5')}`}>
-                <Terminal size={16} /> Debug
+                <Terminal size={16} /> {t.nav.debug}
               </button>
               <button onClick={() => { setDarkMode(d => !d); setMobileMenuOpen(false); }}
                 className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider transition-all ${darkMode ? 'text-amber-400 hover:bg-zinc-900' : 'text-[#2EC4B6] hover:bg-[#2EC4B6]/10'}`}>
                 {darkMode ? <Sun size={16} /> : <Moon size={16} />}
-                {darkMode ? 'Light Mode' : 'Dark Mode'}
+                {darkMode ? t.nav.lightMode : t.nav.darkMode}
               </button>
+              {/* Mobile language switcher */}
+              <div className="flex items-center gap-2 px-4 py-2">
+                <span className={`text-[10px] font-bold uppercase tracking-wider ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/40'}`}>Language</span>
+                <div className="flex gap-1">
+                  {[{code:'en',flag:'🇬🇧'},{code:'ar',flag:'🇸🇦'},{code:'es',flag:'🇪🇸'},{code:'fr',flag:'🇫🇷'}].map(({code,flag}) => (
+                    <button key={code} onClick={() => { setLanguage(code); setMobileMenuOpen(false); }}
+                      className={`h-8 w-8 rounded-lg text-base transition-all ${language === code ? (darkMode ? 'bg-zinc-700 ring-1 ring-zinc-500' : 'bg-[#2EC4B6]/15 ring-1 ring-[#2EC4B6]/40') : (darkMode ? 'hover:bg-zinc-800' : 'hover:bg-zinc-100')}`}>
+                      {flag}
+                    </button>
+                  ))}
+                </div>
+              </div>
             </div>
           </div>
         )}
@@ -2043,11 +2075,11 @@ export default function App() {
                     <div className={`mb-6 flex h-24 w-24 items-center justify-center rounded-full shadow-lg ${darkMode ? 'bg-zinc-900 ring-1 ring-zinc-800' : 'bg-white ring-2 ring-[#2EC4B6]/20 shadow-[#2EC4B6]/10'}`}>
                       <img src={darkMode ? teenzenLogoDark : teenzenLogoLight} alt="Teen Zen" className="h-14 w-14 object-contain" />
                     </div>
-                    <h2 className={`text-2xl font-bold ${darkMode ? 'text-zinc-100' : 'text-[#1F2933]'}`}>How can I help you today?</h2>
-                    <p className={`mt-2 max-w-md text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>AI-guided emotional growth with human support when you need it.</p>
-                    {!currentUser && <p className={`mt-4 text-xs ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>Sign in to save your chat history.</p>}
+                    <h2 className={`text-2xl font-bold ${darkMode ? 'text-zinc-100' : 'text-[#1F2933]'}`}>{t.chat.howCanIHelp}</h2>
+                    <p className={`mt-2 max-w-md text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>{t.chat.aiGuided}</p>
+                    {!currentUser && <p className={`mt-4 text-xs ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>{t.chat.signInToSave}</p>}
                     {currentUser && viewingQuarter && (
-                      <p className={`mt-4 text-xs ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>No messages this quarter.</p>
+                      <p className={`mt-4 text-xs ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>{t.chat.noMessages}</p>
                     )}
                   </div>
                 ) : (
@@ -2095,7 +2127,7 @@ export default function App() {
                     )}
                     <textarea value={input} onChange={(e) => setInput(e.target.value)} disabled={isLoading}
                       onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); if (input.trim()) { handleSendMessage(e); } } }}
-                      placeholder={isLoading ? "Generating response..." : "How are you feeling today?"}
+                      placeholder={isLoading ? t.chat.generating : t.chat.placeholder}
                       rows={1}
                       onInput={(e) => { e.target.style.height = "auto"; e.target.style.height = Math.min(e.target.scrollHeight, 150) + "px"; }}
                       className={`flex-1 bg-transparent px-4 py-3 text-sm outline-none resize-none overflow-y-auto max-h-[150px] ${darkMode ? 'placeholder:text-zinc-600' : 'placeholder:text-[#1F2933]/40'}`} />
@@ -2116,10 +2148,10 @@ export default function App() {
                   </div>
                 )}
                 <div className={`mt-4 flex items-center justify-between border-t pt-3 ${darkMode ? 'border-zinc-900' : 'border-[#2EC4B6]/15'}`}>
-                  <p className={`text-[10px] font-medium uppercase tracking-widest ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>&copy; 2026 TEEN ZEN</p>
+                  <p className={`text-[10px] font-medium uppercase tracking-widest ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>{t.chat.copyright}</p>
                   <div className="flex gap-4">
-                    <span className={`text-[10px] font-medium uppercase tracking-widest flex items-center gap-1 ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}><ShieldCheck size={10}/> SSL Encrypted</span>
-                    <span className={`text-[10px] font-medium uppercase tracking-widest flex items-center gap-1 ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}><Globe size={10}/> Cloud Context</span>
+                    <span className={`text-[10px] font-medium uppercase tracking-widest flex items-center gap-1 ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}><ShieldCheck size={10}/> {t.chat.ssl}</span>
+                    <span className={`text-[10px] font-medium uppercase tracking-widest flex items-center gap-1 ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}><Globe size={10}/> {t.chat.cloud}</span>
                   </div>
                 </div>
               </div>
@@ -3792,14 +3824,14 @@ export default function App() {
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <UserPlus size={32} />
                 </div>
-                <h2 className="text-3xl font-bold tracking-tight">Create Account</h2>
-                <p className={`mt-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>Join Teen Zen and start your journey.</p>
+                <h2 className="text-3xl font-bold tracking-tight">{t.auth.createAccount}</h2>
+                <p className={`mt-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>{t.auth.joinTeenZen}</p>
               </div>
 
               <button onClick={handleGoogleSignIn}
                 className={`w-full flex items-center justify-center gap-3 rounded-xl border py-3.5 text-sm font-medium transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 text-zinc-300 hover:bg-zinc-900 hover:text-white' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933]/80 hover:bg-[#2EC4B6]/5 hover:text-[#1F2933]'}`}>
                 <img src={darkMode ? teenzenLogoDark : teenzenLogoLight} alt="Teen Zen" className="h-8 w-8 rounded-lg" />
-                Sign up with Google
+                {t.auth.signUpGoogle}
               </button>
               <div id="google-signin-fallback" className="w-full"></div>
 
@@ -3811,14 +3843,14 @@ export default function App() {
 
               <form onSubmit={handleRegister} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Username</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.username}</label>
                   <input value={regForm.username} onChange={(e) => setRegForm({...regForm, username: e.target.value})}
                     className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
-                    placeholder="Choose a username" required />
+                    placeholder={t.auth.username} required />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.email}</label>
                   <input type="email" value={regForm.email} onChange={(e) => setRegForm({...regForm, email: e.target.value})}
                     className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="name@example.com" required />
@@ -3826,7 +3858,7 @@ export default function App() {
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1 flex justify-between items-center">
-                    Password <span className="text-[9px] text-indigo-400 normal-case italic">use symbols & numbers</span>
+                    {t.auth.password} <span className="text-[9px] text-indigo-400 normal-case italic">{t.auth.passwordHint}</span>
                   </label>
                   <div className="relative">
                     <input type={showPassword ? "text" : "password"} value={regForm.password}
@@ -3840,34 +3872,34 @@ export default function App() {
                   </div>
                   <div className="flex items-center gap-2 mt-1.5 ml-1">
                     <button type="button" onClick={generateStrongPassword} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-medium transition-colors">
-                      Generate strong password
+                      {t.auth.generatePassword}
                     </button>
                     {suggestedPassword && (
                       <div className="flex items-center gap-2">
                         <code className="text-[10px] text-emerald-500/80 font-mono bg-zinc-900 px-2 py-0.5 rounded">{suggestedPassword}</code>
-                        <button type="button" onClick={useSuggestedPassword} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors">Use</button>
+                        <button type="button" onClick={useSuggestedPassword} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors">{t.auth.usePassword}</button>
                       </div>
                     )}
                   </div>
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Confirm Password</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.confirmPassword}</label>
                   <input type="password" value={regForm.confirmPassword} onChange={(e) => setRegForm({...regForm, confirmPassword: e.target.value})}
-                    className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm focus:border-indigo-500/50 outline-none transition-all"
-                    placeholder="Repeat your password" required />
+                    className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] focus:border-[#2EC4B6]'}`}
+                    placeholder={t.auth.confirmPassword} required />
                 </div>
 
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Age</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.age}</label>
                   <input type="number" value={regForm.age} onChange={(e) => setRegForm({...regForm, age: e.target.value})}
                     className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
-                    placeholder="Must be 13 or older" min="13" max="120" required />
+                    placeholder={t.auth.agePlaceholder} min="13" max="120" required />
                 </div>
 
                 <div className="space-y-1">
                   <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">
-                    Phone Number <span className="text-zinc-700">(optional)</span>
+                    {t.auth.phone} <span className="text-zinc-700">{t.auth.optional}</span>
                   </label>
                   <input type="tel" value={regForm.phone} onChange={(e) => setRegForm({...regForm, phone: e.target.value})}
                     className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
@@ -3875,7 +3907,7 @@ export default function App() {
                 </div>
 
                 <div className="space-y-2 pt-2 border-t border-zinc-800/50">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Account Role</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.accountRole}</label>
                   <div className="flex gap-6 px-1">
                     <label className="flex items-center gap-2.5 group cursor-pointer">
                       <div className="relative flex h-5 w-5 items-center justify-center">
@@ -3883,7 +3915,7 @@ export default function App() {
                           checked={role === 'user'} onChange={() => setRole('user')} />
                         <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
                       </div>
-                      <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">User</span>
+                      <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">{t.auth.roleUser}</span>
                     </label>
                     <label className="flex items-center gap-2.5 group cursor-pointer">
                       <div className="relative flex h-5 w-5 items-center justify-center">
@@ -3891,7 +3923,7 @@ export default function App() {
                           checked={role === 'provider'} onChange={() => setRole('provider')} />
                         <Check size={14} className="pointer-events-none absolute text-white opacity-0 peer-checked:opacity-100 transition-opacity" />
                       </div>
-                      <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">Provider</span>
+                      <span className="text-sm font-medium text-zinc-400 group-hover:text-zinc-200 transition-colors">{t.auth.roleProvider}</span>
                     </label>
                   </div>
                 </div>
@@ -3903,17 +3935,17 @@ export default function App() {
                 )}
 
                 <button type="submit" disabled={regLoading}
-                  className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                  {regLoading ? <><Loader2 size={16} className="animate-spin" /> Creating Account...</> : 'Sign Up Now'}
+                  className="w-full rounded-xl bg-[#2EC4B6] py-4 text-sm font-bold text-white shadow-lg shadow-[#2EC4B6]/20 hover:bg-[#2EC4B6]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  {regLoading ? <><Loader2 size={16} className="animate-spin" /> {t.auth.creatingAccount}</> : t.auth.signUpNow}
                 </button>
               </form>
 
               <p className={`text-center text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>
-                Already have an account?{' '}
-                <button onClick={() => setView('login')} className="text-[#2EC4B6] hover:text-[#2EC4B6]/80 font-medium transition-colors">Sign In</button>
+                {t.auth.alreadyAccount}{' '}
+                <button onClick={() => setView('login')} className="text-[#2EC4B6] hover:text-[#2EC4B6]/80 font-medium transition-colors">{t.auth.signIn}</button>
               </p>
-              <p className="text-center text-[10px] text-zinc-600 uppercase tracking-widest">
-                By signing up, you agree to our <span className="text-zinc-400 underline cursor-pointer hover:text-zinc-200 transition-colors">Terms of Service</span>
+              <p className={`text-center text-[10px] uppercase tracking-widest ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>
+                {t.auth.terms}
               </p>
             </div>
           </div>
@@ -3927,8 +3959,8 @@ export default function App() {
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <LogIn size={32} />
                 </div>
-                <h2 className="text-3xl font-bold tracking-tight">Welcome Back</h2>
-                <p className={`mt-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>Sign in to your account to continue.</p>
+                <h2 className="text-3xl font-bold tracking-tight">{t.auth.welcomeBack}</h2>
+                <p className={`mt-2 text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>{t.auth.signInToContinue}</p>
               </div>
 
               <button onClick={handleGoogleSignIn}
@@ -3939,7 +3971,7 @@ export default function App() {
                   <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05"/>
                   <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
                 </svg>
-                Sign in with Google
+                {t.auth.signInGoogle}
               </button>
               <div id="google-signin-fallback" className="w-full"></div>
 
@@ -3951,13 +3983,13 @@ export default function App() {
 
               <form onSubmit={handleLogin} className="space-y-4">
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.email}</label>
                   <input type="email" value={loginForm.email} onChange={(e) => setLoginForm({...loginForm, email: e.target.value})}
                     className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                     placeholder="name@example.com" required />
                 </div>
                 <div className="space-y-1">
-                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Password</label>
+                  <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.password}</label>
                   <div className="relative">
                     <input type={showPassword ? "text" : "password"} value={loginForm.password}
                       onChange={(e) => setLoginForm({...loginForm, password: e.target.value})}
@@ -3975,18 +4007,18 @@ export default function App() {
                   </div>
                 )}
                 <button type="submit" disabled={loginLoading}
-                  className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                  {loginLoading ? <><Loader2 size={16} className="animate-spin" /> Signing In...</> : 'Sign In'}
+                  className="w-full rounded-xl bg-[#2EC4B6] py-4 text-sm font-bold text-white shadow-lg shadow-[#2EC4B6]/20 hover:bg-[#2EC4B6]/90 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
+                  {loginLoading ? <><Loader2 size={16} className="animate-spin" /> {t.auth.signingIn}</> : t.auth.signIn}
                 </button>
               </form>
 
               <p className={`text-center text-sm ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/60'}`}>
-                Don't have an account?{' '}
-                <button onClick={() => setView('register')} className="text-[#2EC4B6] hover:text-[#2EC4B6]/80 font-medium transition-colors">Sign Up</button>
+                {t.auth.dontHaveAccount}{' '}
+                <button onClick={() => setView('register')} className="text-[#2EC4B6] hover:text-[#2EC4B6]/80 font-medium transition-colors">{t.auth.signUp}</button>
               </p>
               <p className="text-center text-xs text-zinc-600">
                 <button onClick={() => { setView('forgot'); setForgotStep(1); setForgotError(null); setForgotSuccess(false); setForgotEmail(''); setForgotPin(''); setForgotNewPassword(''); }}
-                  className="text-amber-400/70 hover:text-amber-400 transition-colors">Forgot your password?</button>
+                  className="text-amber-400/70 hover:text-amber-400 transition-colors">{t.auth.forgotPassword}</button>
               </p>
             </div>
           </div>
@@ -3997,7 +4029,7 @@ export default function App() {
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
             <div className={`w-full max-w-md space-y-6 rounded-3xl border p-10 shadow-2xl ${darkMode ? 'border-zinc-900 bg-zinc-900/30 backdrop-blur-xl ring-1 ring-white/5' : 'border-[#2EC4B6]/20 bg-white'}`}>
               <button onClick={() => setView('login')} className={`flex items-center gap-1.5 text-xs transition-colors ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-[#1F2933]/50 hover:text-[#2EC4B6]'}`}>
-                <ArrowLeft size={14} /> Back to Sign In
+                <ArrowLeft size={14} /> {t.auth.back}
               </button>
 
               {forgotSuccess ? (
@@ -4005,11 +4037,11 @@ export default function App() {
                   <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-emerald-600/10 text-emerald-500 ring-1 ring-emerald-500/20">
                     <Check size={32} />
                   </div>
-                  <h2 className="text-2xl font-bold tracking-tight">Password Reset!</h2>
-                  <p className="text-sm text-zinc-500">Your password has been successfully changed.</p>
+                  <h2 className="text-2xl font-bold tracking-tight">{t.auth.passwordResetTitle}</h2>
+                  <p className="text-sm text-zinc-500">{t.auth.passwordResetSub}</p>
                   <button onClick={() => setView('login')}
-                    className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all">
-                    Sign In Now
+                    className="w-full rounded-xl bg-[#2EC4B6] py-4 text-sm font-bold text-white shadow-lg shadow-[#2EC4B6]/20 hover:bg-[#2EC4B6]/90 transition-all">
+                    {t.auth.signInNow}
                   </button>
                 </div>
               ) : forgotStep === 1 ? (
@@ -4018,11 +4050,11 @@ export default function App() {
                     <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-600/10 text-amber-500 ring-1 ring-amber-500/20">
                       <Mail size={32} />
                     </div>
-                    <h2 className="text-2xl font-bold tracking-tight">Forgot Password</h2>
-                    <p className="mt-2 text-sm text-zinc-500">Enter your email and we'll send you a reset code.</p>
+                    <h2 className="text-2xl font-bold tracking-tight">{t.auth.forgotTitle}</h2>
+                    <p className="mt-2 text-sm text-zinc-500">{t.auth.forgotSub}</p>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">Email Address</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.email}</label>
                     <input type="email" value={forgotEmail} onChange={(e) => setForgotEmail(e.target.value)}
                       className={`w-full rounded-xl border px-4 py-3 text-sm outline-none transition-all ${darkMode ? 'border-zinc-800 bg-zinc-950 placeholder:text-zinc-700' : 'border-[#2EC4B6]/30 bg-[#F7F9FB] text-[#1F2933] placeholder:text-[#1F2933]/30 focus:border-[#2EC4B6]'}`}
                       placeholder="name@example.com" />
@@ -4034,7 +4066,7 @@ export default function App() {
                   )}
                   <button onClick={handleForgotPassword} disabled={forgotLoading || !forgotEmail}
                     className="w-full rounded-xl bg-amber-600 py-4 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                    {forgotLoading ? <><Loader2 size={16} className="animate-spin" /> Sending...</> : 'Send Reset Code'}
+                    {forgotLoading ? <><Loader2 size={16} className="animate-spin" /> {t.auth.sending}</> : t.auth.sendResetCode}
                   </button>
                 </div>
               ) : (
@@ -4043,17 +4075,17 @@ export default function App() {
                     <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-600/10 text-amber-500 ring-1 ring-amber-500/20">
                       <ShieldCheck size={32} />
                     </div>
-                    <h2 className="text-2xl font-bold tracking-tight">Enter Reset Code</h2>
-                    <p className="mt-2 text-sm text-zinc-500">We sent a 6-digit code to <span className="text-indigo-400">{forgotEmail}</span></p>
+                    <h2 className="text-2xl font-bold tracking-tight">{t.auth.enterResetCode}</h2>
+                    <p className="mt-2 text-sm text-zinc-500">{t.auth.sentCodeTo} <span className="text-indigo-400">{forgotEmail}</span></p>
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">6-Digit Code</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.sixDigitCode}</label>
                     <input type="text" value={forgotPin} onChange={(e) => setForgotPin(e.target.value.replace(/\D/g, '').slice(0, 6))}
                       className="w-full rounded-xl border border-zinc-800 bg-zinc-950 px-4 py-3 text-sm text-center tracking-[0.5em] font-mono text-lg focus:border-amber-500/50 outline-none transition-all placeholder:text-zinc-700 placeholder:tracking-normal placeholder:text-sm placeholder:font-sans"
                       placeholder="Enter code" maxLength={6} />
                   </div>
                   <div className="space-y-1">
-                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">New Password</label>
+                    <label className="text-[10px] font-bold uppercase tracking-widest text-zinc-500 ml-1">{t.auth.newPassword}</label>
                     <div className="relative">
                       <input type={showPassword ? "text" : "password"} value={forgotNewPassword}
                         onChange={(e) => setForgotNewPassword(e.target.value)}
@@ -4071,7 +4103,7 @@ export default function App() {
                       {suggestedPassword && (
                         <div className="flex items-center gap-2">
                           <code className="text-[10px] text-emerald-500/80 font-mono bg-zinc-900 px-2 py-0.5 rounded">{suggestedPassword}</code>
-                          <button type="button" onClick={useSuggestedPasswordReset} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors">Use</button>
+                          <button type="button" onClick={useSuggestedPasswordReset} className="text-[10px] text-indigo-400 hover:text-indigo-300 font-bold uppercase transition-colors">{t.auth.usePassword}</button>
                         </div>
                       )}
                     </div>
@@ -4083,11 +4115,11 @@ export default function App() {
                   )}
                   <button onClick={handleResetPassword} disabled={forgotLoading || forgotPin.length !== 6 || forgotNewPassword.length < 8}
                     className="w-full rounded-xl bg-amber-600 py-4 text-sm font-bold text-white shadow-lg shadow-amber-500/20 hover:bg-amber-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                    {forgotLoading ? <><Loader2 size={16} className="animate-spin" /> Resetting...</> : 'Reset Password'}
+                    {forgotLoading ? <><Loader2 size={16} className="animate-spin" /> {t.auth.resetting}</> : t.auth.resetPassword}
                   </button>
                   <p className="text-center text-xs text-zinc-600">
                     <button onClick={() => { setForgotStep(1); setForgotError(null); }}
-                      className="text-amber-400/70 hover:text-amber-400 transition-colors">Use a different email</button>
+                      className="text-amber-400/70 hover:text-amber-400 transition-colors">{t.auth.useDifferentEmail}</button>
                   </p>
                 </div>
               )}
@@ -4100,14 +4132,14 @@ export default function App() {
           <div className="flex-1 flex items-center justify-center p-6 overflow-y-auto">
             <div className={`w-full max-w-md space-y-6 rounded-3xl border p-10 shadow-2xl ${darkMode ? 'border-zinc-900 bg-zinc-900/30 backdrop-blur-xl ring-1 ring-white/5' : 'border-[#2EC4B6]/20 bg-white'}`}>
               <button onClick={() => setView('register')} className={`flex items-center gap-1.5 text-xs transition-colors ${darkMode ? 'text-zinc-500 hover:text-zinc-300' : 'text-[#1F2933]/50 hover:text-[#2EC4B6]'}`}>
-                <ArrowLeft size={14} /> Back
+                <ArrowLeft size={14} /> {t.auth.backSimple}
               </button>
               <div className="text-center">
                 <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-indigo-600/10 text-indigo-500 ring-1 ring-indigo-500/20">
                   <Mail size={32} />
                 </div>
-                <h2 className="text-3xl font-bold tracking-tight">Check Your Email</h2>
-                <p className="mt-2 text-sm text-zinc-500">We sent a 6-digit code to <span className="text-indigo-400 font-medium">{verifyEmail}</span></p>
+                <h2 className="text-3xl font-bold tracking-tight">{t.auth.checkEmail}</h2>
+                <p className="mt-2 text-sm text-zinc-500">{t.auth.sentCodePre} <span className="text-indigo-400 font-medium">{verifyEmail}</span></p>
               </div>
 
               {verifySuccess ? (
@@ -4115,8 +4147,8 @@ export default function App() {
                   <div className="flex h-16 w-16 items-center justify-center rounded-full bg-emerald-500/10 ring-1 ring-emerald-500/20">
                     <Check size={32} className="text-emerald-400" />
                   </div>
-                  <p className="text-lg font-bold text-emerald-400">Email Verified!</p>
-                  <p className="text-sm text-zinc-500">Redirecting to sign in...</p>
+                  <p className="text-lg font-bold text-emerald-400">{t.auth.emailVerified}</p>
+                  <p className="text-sm text-zinc-500">{t.auth.redirecting}</p>
                 </div>
               ) : (
                 <>
@@ -4137,14 +4169,14 @@ export default function App() {
                   )}
                   <button onClick={handleVerifyPin} disabled={verifyLoading || pinDigits.join('').length !== 6}
                     className="w-full rounded-xl bg-indigo-600 py-4 text-sm font-bold text-white shadow-lg shadow-indigo-500/20 hover:bg-indigo-500 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2">
-                    {verifyLoading ? <><Loader2 size={16} className="animate-spin" /> Verifying...</> : 'Verify Email'}
+                    {verifyLoading ? <><Loader2 size={16} className="animate-spin" /> {t.auth.verifying}</> : t.auth.verifyEmail}
                   </button>
                   <div className="text-center">
                     <p className="text-sm text-zinc-500">
-                      Didn't receive a code?{' '}
+                      {t.auth.didntReceive}{' '}
                       <button onClick={handleResendPin} disabled={resendLoading}
                         className="text-indigo-400 hover:text-indigo-300 font-medium transition-colors disabled:opacity-50 inline-flex items-center gap-1">
-                        {resendLoading ? <><Loader2 size={12} className="animate-spin" /> Sending...</> : <><RefreshCw size={12} /> Resend Code</>}
+                        {resendLoading ? <><Loader2 size={12} className="animate-spin" /> {t.auth.sending2}</> : <><RefreshCw size={12} /> {t.auth.resendCode}</>}
                       </button>
                     </p>
                   </div>

@@ -44,8 +44,9 @@ from typing import Optional
 from datetime import timedelta, datetime, timezone
 from fastapi import FastAPI, HTTPException, Query, Header, Request, UploadFile, File, Form
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse, JSONResponse
 import urllib.request
+import threading
 from pydantic import BaseModel, EmailStr, validator
 from auth import (
     create_user, authenticate_user, verify_email_token, verify_email_pin,
@@ -82,6 +83,35 @@ load_dotenv()
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger('api_v2')
 
+# Slack alerting
+SLACK_WEBHOOK_URL = os.getenv("SLACK_WEBHOOK_URL", "")
+SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN", "")
+SLACK_DM_USERS = [u.strip() for u in os.getenv("SLACK_DM_USERS", "").split(",") if u.strip()]
+
+def send_slack_alert(text: str):
+    """Fire-and-forget Slack notification — posts to channel AND DMs specified users."""
+    def _post():
+        import requests as _req
+        # Post to channel via webhook
+        if SLACK_WEBHOOK_URL:
+            try:
+                _req.post(SLACK_WEBHOOK_URL, json={"text": text}, timeout=5)
+            except Exception as e:
+                logger.warning(f"Slack webhook failed: {e}")
+        # DM each user via Bot API
+        if SLACK_BOT_TOKEN and SLACK_DM_USERS:
+            headers = {"Authorization": f"Bearer {SLACK_BOT_TOKEN}", "Content-Type": "application/json"}
+            for user_id in SLACK_DM_USERS:
+                try:
+                    _req.post("https://slack.com/api/chat.postMessage",
+                        headers=headers,
+                        json={"channel": user_id, "text": text},
+                        timeout=5)
+                except Exception as e:
+                    logger.warning(f"Slack DM to {user_id} failed: {e}")
+    if SLACK_WEBHOOK_URL or (SLACK_BOT_TOKEN and SLACK_DM_USERS):
+        threading.Thread(target=_post, daemon=True).start()
+
 app = FastAPI(title='RAG Chatbot – V2')
 
 
@@ -93,6 +123,16 @@ async def startup_event():
     ensure_email_verification_table()
     chain_v2.initialize_global_vars()
     logger.info("✅ RAG chain initialized and ready for requests.")
+    if chain_v2.rag_chain is None:
+        send_slack_alert("🔴 *Teen Zen backend started BUT RAG chain failed to initialize.* Chat may be unavailable.")
+    else:
+        send_slack_alert("✅ *Teen Zen backend is online.* RAG chain ready.")
+
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    logger.info("🛑 Server shutting down.")
+    send_slack_alert("⚠️ *Teen Zen backend is shutting down.* The chatbot will be offline until restarted.")
 
 
 app.add_middleware(
@@ -100,6 +140,20 @@ app.add_middleware(
     allow_origins=["*"], allow_credentials=True,
     allow_methods=["*"], allow_headers=["*"],
 )
+
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    # Don't alert on routine HTTP errors (401, 403, 404, etc.)
+    if isinstance(exc, HTTPException):
+        raise exc
+    logger.error(f"💥 Unhandled exception on {request.url.path}: {exc}", exc_info=True)
+    send_slack_alert(
+        f"🔴 *Teen Zen unhandled server error*\n"
+        f"• Path: `{request.url.path}`\n"
+        f"• Error: `{type(exc).__name__}: {str(exc)[:300]}`"
+    )
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
 
 
 # --- HELPERS ---
@@ -120,6 +174,7 @@ def require_provider(user):
     if user.get('role') != 'provider':
         raise HTTPException(status_code=403, detail="Only providers can access this")
     return user
+
 
 
 # --- MODELS ---
@@ -674,6 +729,10 @@ def groq_stream_response(question, system_prompt=None, context=None):
                 yield chunk.choices[0].delta.content
     except Exception as e:
         logger.error(f"Groq API error: {e}")
+        send_slack_alert(
+            f"🔴 *Groq API failure* — Chat is falling back to local model.\n"
+            f"• Error: `{type(e).__name__}: {str(e)[:300]}`"
+        )
         raise
 
 def get_rag_context(question):
@@ -685,6 +744,7 @@ def get_rag_context(question):
                 return "\n".join([d.page_content[:500] for d in docs[:3]])
     except Exception as e:
         logger.error(f"RAG retrieval error: {e}")
+        send_slack_alert(f"⚠️ *RAG retrieval error* — responses will have no knowledge-base context.\n`{str(e)[:300]}`")
     return None
 
 # ===== EMAIL VERIFICATION =====
@@ -1173,6 +1233,7 @@ async def chat_stream(question: str = Query(...), language: str = Query(default=
                     yield f"data: {json.dumps({'type': 'error', 'message': 'Both Groq and local model unavailable'})}\n\n"
         except Exception as e:
             logger.error(f"💥 [Stream] Error: {str(e)}", exc_info=True)
+            send_slack_alert(f"🔴 *Chat stream crashed*\n`{type(e).__name__}: {str(e)[:300]}`")
             yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     return StreamingResponse(event_generator(), media_type="text/event-stream")
 

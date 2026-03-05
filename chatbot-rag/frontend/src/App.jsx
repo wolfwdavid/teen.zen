@@ -5,7 +5,7 @@ import {
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
   ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save,
   ChevronLeft, ChevronRight, Archive, Search, Hash, Lock, Paperclip,
-  Sun, Moon
+  Sun, Moon, Zap
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -282,6 +282,9 @@ export default function App() {
   });
   const [showGuestModal, setShowGuestModal] = useState(false);
   const GUEST_LIMIT = 25;
+
+  // Pricing modal (placeholder — payment not yet active)
+  const [showPaywallModal, setShowPaywallModal] = useState(false);
   const MAX_PATIENTS = 15;
 
   // Registration
@@ -1970,6 +1973,11 @@ export default function App() {
                 </button>
               ))}
             </div>
+            {/* Pricing button */}
+            <button onClick={() => setShowPaywallModal(true)}
+              className="flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-bold uppercase tracking-wider bg-[#2EC4B6] text-white hover:bg-[#2EC4B6]/90 transition-all shadow-md shadow-[#2EC4B6]/20">
+              <Zap size={13} /> Pricing
+            </button>
           </div>
 
           {/* Mobile hamburger */}
@@ -2024,6 +2032,11 @@ export default function App() {
                   ))}
                 </div>
               </div>
+              {/* Mobile pricing button */}
+              <button onClick={() => { setShowPaywallModal(true); setMobileMenuOpen(false); }}
+                className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold uppercase tracking-wider bg-[#2EC4B6] text-white transition-all">
+                <Zap size={16} /> Pricing
+              </button>
             </div>
           </div>
         )}
@@ -4255,6 +4268,76 @@ export default function App() {
               <button onClick={() => setShowGuestModal(false)}
                 className="w-full py-2 text-xs text-zinc-500 hover:text-zinc-400 transition-colors">
                 Maybe later
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ===== PAYWALL MODAL ===== */}
+      {showPaywallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className={`w-full max-w-lg rounded-3xl border shadow-2xl overflow-hidden ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#2EC4B6]/20'}`}>
+            {/* Header */}
+            <div className="relative bg-gradient-to-br from-[#2EC4B6] to-[#9D8DF1] p-8 text-center">
+              <button onClick={() => setShowPaywallModal(false)}
+                className="absolute top-4 right-4 h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-all">
+                <X size={16} />
+              </button>
+              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20">
+                <Zap size={28} className="text-white" />
+              </div>
+              <h2 className="text-2xl font-bold text-white">Unlock Full Access</h2>
+              <p className="mt-1 text-sm text-white/80">You've reached the {GUEST_LIMIT}-message free limit. Subscribe to continue.</p>
+            </div>
+
+            {/* Plans */}
+            <div className={`p-6 grid grid-cols-2 gap-4`}>
+              {/* User Plan */}
+              <div className={`rounded-2xl border p-5 flex flex-col gap-3 ${currentUser?.role !== 'provider' ? (darkMode ? 'border-[#2EC4B6]/60 bg-[#2EC4B6]/10 ring-1 ring-[#2EC4B6]/40' : 'border-[#2EC4B6]/60 bg-[#2EC4B6]/5 ring-1 ring-[#2EC4B6]/40') : (darkMode ? 'border-zinc-800' : 'border-zinc-200')}`}>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#2EC4B6]">Teen Plan</p>
+                  <p className={`text-3xl font-bold mt-1 ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>$14.99<span className="text-sm font-normal text-zinc-500">/mo</span></p>
+                </div>
+                <ul className={`space-y-1.5 text-xs flex-1 ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Unlimited AI chat','Mood tracking','Journal entries','Progress insights','Priority support'].map(f => (
+                    <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#2EC4B6] shrink-0" />{f}</li>
+                  ))}
+                </ul>
+                {currentUser?.role !== 'provider' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#2EC4B6] text-center">Your Plan</span>
+                )}
+              </div>
+
+              {/* Provider Plan */}
+              <div className={`rounded-2xl border p-5 flex flex-col gap-3 ${currentUser?.role === 'provider' ? (darkMode ? 'border-[#9D8DF1]/60 bg-[#9D8DF1]/10 ring-1 ring-[#9D8DF1]/40' : 'border-[#9D8DF1]/60 bg-[#9D8DF1]/5 ring-1 ring-[#9D8DF1]/40') : (darkMode ? 'border-zinc-800' : 'border-zinc-200')}`}>
+                <div>
+                  <p className="text-xs font-bold uppercase tracking-widest text-[#9D8DF1]">Provider Plan</p>
+                  <p className={`text-3xl font-bold mt-1 ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>$24.99<span className="text-sm font-normal text-zinc-500">/mo</span></p>
+                </div>
+                <ul className={`space-y-1.5 text-xs flex-1 ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Everything in Teen','Patient dashboard','Clinical tools','Knowledge graph','Task management'].map(f => (
+                    <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#9D8DF1] shrink-0" />{f}</li>
+                  ))}
+                </ul>
+                {currentUser?.role === 'provider' && (
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#9D8DF1] text-center">Your Plan</span>
+                )}
+              </div>
+            </div>
+
+            {/* CTA — placeholder until payment is live */}
+            <div className={`px-6 pb-6 space-y-3 border-t ${darkMode ? 'border-zinc-800' : 'border-zinc-100'} pt-4`}>
+              <div className={`w-full rounded-xl border-2 border-dashed py-4 text-center ${darkMode ? 'border-zinc-700 bg-zinc-800/40' : 'border-[#2EC4B6]/30 bg-[#2EC4B6]/5'}`}>
+                <p className={`text-sm font-bold ${darkMode ? 'text-zinc-300' : 'text-[#1F2933]'}`}>Subscriptions Coming Soon</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/50'}`}>We'll let you know when payments go live.</p>
+              </div>
+              <p className={`text-center text-[10px] ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>
+                Secure payment by Stripe · Cancel anytime
+              </p>
+              <button onClick={() => setShowPaywallModal(false)}
+                className={`w-full py-2 text-xs transition-colors ${darkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-[#1F2933]/40 hover:text-[#1F2933]/60'}`}>
+                Close
               </button>
             </div>
           </div>

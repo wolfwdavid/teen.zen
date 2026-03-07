@@ -5,7 +5,7 @@ import {
   LogIn, Mail, ArrowLeft, RefreshCw, Loader2, Menu, UserCircle,
   ClipboardList, Plus, Calendar, Trash2, CheckCircle2, Circle, Camera, Save,
   ChevronLeft, ChevronRight, Archive, Search, Hash, Lock, Paperclip,
-  Sun, Moon, Zap
+  Sun, Moon, Zap, Star, Heart, GraduationCap, BookOpen, Sparkles
 } from 'lucide-react';
 
 import API_BASE from "./api/apiBase";
@@ -4274,66 +4274,140 @@ export default function App() {
         </div>
       )}
 
-      {/* ===== PAYWALL MODAL ===== */}
+      {/* ===== PRICING MODAL ===== */}
       {showPaywallModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
-          <div className={`w-full max-w-lg rounded-3xl border shadow-2xl overflow-hidden ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#2EC4B6]/20'}`}>
+          <div className={`w-full max-w-2xl max-h-[90vh] rounded-3xl border shadow-2xl overflow-hidden flex flex-col ${darkMode ? 'bg-zinc-900 border-zinc-800' : 'bg-white border-[#2EC4B6]/20'}`}>
             {/* Header */}
-            <div className="relative bg-gradient-to-br from-[#2EC4B6] to-[#9D8DF1] p-8 text-center">
+            <div className="relative bg-gradient-to-br from-[#2EC4B6] to-[#9D8DF1] p-6 text-center shrink-0">
               <button onClick={() => setShowPaywallModal(false)}
                 className="absolute top-4 right-4 h-8 w-8 rounded-full bg-white/20 flex items-center justify-center text-white hover:bg-white/30 transition-all">
                 <X size={16} />
               </button>
-              <div className="mx-auto mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20">
-                <Zap size={28} className="text-white" />
-              </div>
-              <h2 className="text-2xl font-bold text-white">Unlock Full Access</h2>
-              <p className="mt-1 text-sm text-white/80">You've reached the {GUEST_LIMIT}-message free limit. Subscribe to continue.</p>
+              <h2 className="text-2xl font-bold text-white">Choose Your Plan</h2>
+              <p className="mt-1 text-sm text-white/80">Simple pricing for every journey</p>
             </div>
 
-            {/* Plans */}
-            <div className={`p-6 grid grid-cols-2 gap-4`}>
-              {/* User Plan */}
-              <div className={`rounded-2xl border p-5 flex flex-col gap-3 ${currentUser?.role !== 'provider' ? (darkMode ? 'border-[#2EC4B6]/60 bg-[#2EC4B6]/10 ring-1 ring-[#2EC4B6]/40' : 'border-[#2EC4B6]/60 bg-[#2EC4B6]/5 ring-1 ring-[#2EC4B6]/40') : (darkMode ? 'border-zinc-800' : 'border-zinc-200')}`}>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#2EC4B6]">Teen Plan</p>
-                  <p className={`text-3xl font-bold mt-1 ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>$14.99<span className="text-sm font-normal text-zinc-500">/mo</span></p>
+            {/* Scrollable plans */}
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+
+              {/* Free Plan */}
+              <div className={`rounded-2xl border p-5 ${darkMode ? 'border-zinc-800 bg-zinc-800/30' : 'border-zinc-200 bg-zinc-50'}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${darkMode ? 'bg-zinc-700' : 'bg-zinc-200'}`}>
+                    <Sparkles size={20} className={darkMode ? 'text-zinc-300' : 'text-zinc-600'} />
+                  </div>
+                  <div>
+                    <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>Free</p>
+                    <p className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>Get started</p>
+                  </div>
+                  <p className={`ml-auto text-2xl font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>€0</p>
                 </div>
-                <ul className={`space-y-1.5 text-xs flex-1 ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
-                  {['Unlimited AI chat','Mood tracking','Journal entries','Progress insights','Priority support'].map(f => (
+                <ul className={`space-y-1.5 text-xs ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Basic mood tracking', 'Limited journal prompts', 'Introductory wellness content', `${GUEST_LIMIT} messages per day`].map(f => (
                     <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#2EC4B6] shrink-0" />{f}</li>
                   ))}
                 </ul>
-                {currentUser?.role !== 'provider' && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#2EC4B6] text-center">Your Plan</span>
-                )}
               </div>
 
-              {/* Provider Plan */}
-              <div className={`rounded-2xl border p-5 flex flex-col gap-3 ${currentUser?.role === 'provider' ? (darkMode ? 'border-[#9D8DF1]/60 bg-[#9D8DF1]/10 ring-1 ring-[#9D8DF1]/40' : 'border-[#9D8DF1]/60 bg-[#9D8DF1]/5 ring-1 ring-[#9D8DF1]/40') : (darkMode ? 'border-zinc-800' : 'border-zinc-200')}`}>
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-[#9D8DF1]">Provider Plan</p>
-                  <p className={`text-3xl font-bold mt-1 ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>$24.99<span className="text-sm font-normal text-zinc-500">/mo</span></p>
+              {/* Premium Plan */}
+              <div className={`rounded-2xl border-2 p-5 relative ${darkMode ? 'border-[#2EC4B6]/60 bg-[#2EC4B6]/5' : 'border-[#2EC4B6]/60 bg-[#2EC4B6]/5'}`}>
+                <span className="absolute -top-2.5 left-5 px-3 py-0.5 rounded-full bg-[#2EC4B6] text-white text-[10px] font-bold uppercase tracking-wider">Most Popular</span>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#2EC4B6]/20">
+                    <Star size={20} className="text-[#2EC4B6]" />
+                  </div>
+                  <div>
+                    <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>Teen Zen Premium</p>
+                    <p className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>Full wellness toolkit</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>€6.99<span className="text-sm font-normal text-zinc-500">/mo</span></p>
+                    <p className="text-[10px] text-zinc-500">or €59/year (save 30%)</p>
+                  </div>
                 </div>
-                <ul className={`space-y-1.5 text-xs flex-1 ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
-                  {['Everything in Teen','Patient dashboard','Clinical tools','Knowledge graph','Task management'].map(f => (
+                <ul className={`space-y-1.5 text-xs ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Unlimited AI chat sessions', 'Full mood tracking & analytics', 'Guided wellness programs', 'Advanced progress insights', 'Journal with smart prompts', 'Priority support'].map(f => (
+                    <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#2EC4B6] shrink-0" />{f}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Therapist Plan */}
+              <div className={`rounded-2xl border p-5 ${darkMode ? 'border-[#9D8DF1]/40 bg-[#9D8DF1]/5' : 'border-[#9D8DF1]/40 bg-[#9D8DF1]/5'}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#9D8DF1]/20">
+                    <Heart size={20} className="text-[#9D8DF1]" />
+                  </div>
+                  <div>
+                    <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>Therapist Partnership</p>
+                    <p className="text-[10px] text-[#9D8DF1] font-semibold">First 3 months free!</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>€19<span className="text-sm font-normal text-zinc-500">/mo</span></p>
+                    <p className="text-[10px] text-zinc-500">+ 20% session commission</p>
+                  </div>
+                </div>
+                <ul className={`space-y-1.5 text-xs ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Professional profile listing', 'Client management tools', 'Session scheduling & tracking', 'All Premium features included'].map(f => (
                     <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#9D8DF1] shrink-0" />{f}</li>
                   ))}
                 </ul>
-                {currentUser?.role === 'provider' && (
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-[#9D8DF1] text-center">Your Plan</span>
-                )}
+                <div className={`mt-3 rounded-lg p-2.5 text-[11px] ${darkMode ? 'bg-zinc-800/60 text-zinc-400' : 'bg-white/80 text-zinc-600'}`}>
+                  Example: €80 session → Therapist receives €64, Teen Zen fee €16
+                </div>
+              </div>
+
+              {/* Schools Plan */}
+              <div className={`rounded-2xl border p-5 ${darkMode ? 'border-zinc-800 bg-zinc-800/30' : 'border-zinc-200 bg-zinc-50'}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${darkMode ? 'bg-zinc-700' : 'bg-zinc-200'}`}>
+                    <GraduationCap size={20} className={darkMode ? 'text-zinc-300' : 'text-zinc-600'} />
+                  </div>
+                  <div>
+                    <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>Schools & Institutions</p>
+                    <p className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>Campus-wide wellness</p>
+                  </div>
+                  <div className="ml-auto text-right">
+                    <p className={`text-2xl font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>€3–5<span className="text-sm font-normal text-zinc-500">/student/mo</span></p>
+                    <p className="text-[10px] text-zinc-500">or €1,500–10,000/year</p>
+                  </div>
+                </div>
+                <ul className={`space-y-1.5 text-xs ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Student access to all wellness tools', 'Mental health resources library', 'Usage analytics & reporting', 'Optional therapist support add-on'].map(f => (
+                    <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#2EC4B6] shrink-0" />{f}</li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Programs Plan */}
+              <div className={`rounded-2xl border p-5 ${darkMode ? 'border-zinc-800 bg-zinc-800/30' : 'border-zinc-200 bg-zinc-50'}`}>
+                <div className="flex items-center gap-3 mb-3">
+                  <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${darkMode ? 'bg-zinc-700' : 'bg-zinc-200'}`}>
+                    <BookOpen size={20} className={darkMode ? 'text-zinc-300' : 'text-zinc-600'} />
+                  </div>
+                  <div>
+                    <p className={`text-base font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>Programs & Resources</p>
+                    <p className={`text-xs ${darkMode ? 'text-zinc-500' : 'text-zinc-500'}`}>One-time digital programs</p>
+                  </div>
+                  <p className={`ml-auto text-2xl font-bold ${darkMode ? 'text-white' : 'text-[#1F2933]'}`}>€15–49<span className="text-sm font-normal text-zinc-500">/each</span></p>
+                </div>
+                <ul className={`space-y-1.5 text-xs ${darkMode ? 'text-zinc-400' : 'text-[#1F2933]/70'}`}>
+                  {['Stress Management Program', 'Confidence Building Course', 'Emotional Resilience Toolkit', 'Self-paced, lifetime access'].map(f => (
+                    <li key={f} className="flex items-center gap-2"><Check size={12} className="text-[#2EC4B6] shrink-0" />{f}</li>
+                  ))}
+                </ul>
               </div>
             </div>
 
-            {/* CTA — placeholder until payment is live */}
-            <div className={`px-6 pb-6 space-y-3 border-t ${darkMode ? 'border-zinc-800' : 'border-zinc-100'} pt-4`}>
-              <div className={`w-full rounded-xl border-2 border-dashed py-4 text-center ${darkMode ? 'border-zinc-700 bg-zinc-800/40' : 'border-[#2EC4B6]/30 bg-[#2EC4B6]/5'}`}>
+            {/* Footer */}
+            <div className={`px-5 pb-5 pt-4 space-y-3 border-t shrink-0 ${darkMode ? 'border-zinc-800' : 'border-zinc-100'}`}>
+              <div className={`w-full rounded-xl border-2 border-dashed py-3 text-center ${darkMode ? 'border-zinc-700 bg-zinc-800/40' : 'border-[#2EC4B6]/30 bg-[#2EC4B6]/5'}`}>
                 <p className={`text-sm font-bold ${darkMode ? 'text-zinc-300' : 'text-[#1F2933]'}`}>Subscriptions Coming Soon</p>
-                <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/50'}`}>We'll let you know when payments go live.</p>
+                <p className={`text-xs mt-1 ${darkMode ? 'text-zinc-500' : 'text-[#1F2933]/50'}`}>We'll notify you when payments go live.</p>
               </div>
               <p className={`text-center text-[10px] ${darkMode ? 'text-zinc-600' : 'text-[#1F2933]/40'}`}>
-                Secure payment by Stripe · Cancel anytime
+                All prices in EUR · Secure payment by Stripe · Cancel anytime
               </p>
               <button onClick={() => setShowPaywallModal(false)}
                 className={`w-full py-2 text-xs transition-colors ${darkMode ? 'text-zinc-600 hover:text-zinc-400' : 'text-[#1F2933]/40 hover:text-[#1F2933]/60'}`}>
